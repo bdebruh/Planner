@@ -398,26 +398,24 @@ const Gantt = (() => {
       const w = (Math.min(total, D.diff(start, D.parse(ph.end_date)) + 1) * ppd) - x;
       if (w <= 0) return;
 
-      // Band — sits behind bars (rendered before bars in DOM)
+      // Band — very subtle tint, behind bars
       const band = document.createElement('div');
       band.className = 'phase-band';
       band.style.cssText = `
         position:absolute; left:${x}px; width:${w}px; top:0; height:${bodyH}px;
-        background:${ph.color}20;
-        border-left:3px solid ${ph.color};
-        border-right:1px solid ${ph.color}55;
+        background:${ph.color}0d;
+        border-left:2px solid ${ph.color}55;
+        border-right:1px solid ${ph.color}22;
         pointer-events:none; box-sizing:border-box;`;
 
-      // Name label
+      // Name label at the very bottom, small and light
       const lbl = document.createElement('div');
       lbl.style.cssText = `
-        position:absolute; top:5px; left:7px;
-        padding:2px 9px; border-radius:4px;
-        background:${ph.color}; color:#fff;
-        font-size:10px; font-weight:700; letter-spacing:.05em;
+        position:absolute; bottom:6px; left:6px; right:6px;
+        font-size:10px; font-weight:600; letter-spacing:.06em;
         text-transform:uppercase; white-space:nowrap;
         overflow:hidden; text-overflow:ellipsis;
-        max-width:calc(100% - 14px);`;
+        color:${ph.color}99;`;
       lbl.textContent = ph.name;
       band.appendChild(lbl);
       body.appendChild(band);
