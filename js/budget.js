@@ -127,21 +127,21 @@ const Budget = (() => {
       <div class="bud-page">
 
         <!-- Back + header -->
-        <div class="bud-header">
-          <div style="display:flex;align-items:center;gap:12px;">
-            <button class="bud-back" onclick="Budget._backToList()">← All Budgets</button>
+        <div style="margin-bottom:20px;">
+          <button class="bud-back" onclick="Budget._backToList()" style="margin-bottom:10px;">← All Budgets</button>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
             <div>
               <h1 class="bud-title">${esc(b.name)}</h1>
-              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:3px;">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
                 <span class="bud-tag">${esc(b.grant_code)}</span>
                 ${b.funding_agency ? `<span style="font-size:12.5px;color:#80868b;">${esc(b.funding_agency)}</span>` : ''}
-                ${b._projectName ? `<span style="font-size:12.5px;color:#80868b;">· ${esc(b._projectName)}</span>` : ''}
+                ${b._projectName ? `<button onclick="openProject('${b.project_id}')" style="background:none;border:none;cursor:pointer;font-size:12.5px;color:#1a5aa8;padding:0;font-family:inherit;">→ Open project: ${esc(b._projectName)}</button>` : ''}
               </div>
             </div>
-          </div>
-          <div style="display:flex;gap:8px;">
-            <button class="bud-btn-outline" onclick="Budget._openBudgetModal('${b.id}')">Edit Budget</button>
-            <button class="bud-btn-primary" onclick="Budget._openTxModal()">+ Add Transaction</button>
+            <div style="display:flex;gap:8px;flex-shrink:0;">
+              <button class="bud-btn-outline" onclick="Budget._openBudgetModal('${b.id}')">Edit</button>
+              <button class="bud-btn-primary" onclick="Budget._openTxModal()">+ Add Transaction</button>
+            </div>
           </div>
         </div>
 
@@ -472,20 +472,38 @@ const Budget = (() => {
     const btn = document.querySelector('.bud-btn-save');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
-    try {
+    const save = async (p) => {
       if (txId) {
-        await DB.updateExpense(txId, payload);
+        await DB.updateExpense(txId, p);
         const idx = _transactions.findIndex(t => t.id === txId);
-        if (idx >= 0) _transactions[idx] = { ..._transactions[idx], ...payload };
+        if (idx >= 0) _transactions[idx] = { ..._transactions[idx], ...p };
       } else {
-        const newTx = await DB.createExpense(payload);
+        const newTx = await DB.createExpense(p);
         _transactions.push(newTx);
       }
+    };
+
+    try {
+      await save(payload);
       _closeModal();
       toast(txId ? 'Transaction updated.' : 'Transaction added.', 'success');
       renderDetail();
     } catch(e) {
-      alert('Save failed: ' + e.message);
+      // If transaction_type column doesn't exist yet, retry without it
+      if (e.message && e.message.includes('transaction_type')) {
+        try {
+          const { transaction_type, ...fallback } = payload;
+          await save(fallback);
+          _closeModal();
+          toast(txId ? 'Transaction updated.' : 'Transaction added.', 'success');
+          renderDetail();
+          return;
+        } catch(e2) {
+          alert('Save failed: ' + e2.message);
+        }
+      } else {
+        alert('Save failed: ' + e.message);
+      }
       if (btn) { btn.disabled = false; btn.textContent = txId ? 'Save Changes' : 'Add Transaction'; }
     }
   }
