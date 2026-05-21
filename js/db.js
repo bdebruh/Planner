@@ -1,0 +1,156 @@
+// ── Supabase client + all database operations ─────────────────
+const DB = (() => {
+  const { createClient } = supabase;
+  const client = createClient(window.SUPABASE_URL, window.SUPABASE_ANON);
+
+  // ── Projects ──────────────────────────────────────────────────
+  async function getProjects() {
+    const { data, error } = await client
+      .from('projects')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data;
+  }
+
+  async function createProject(data) {
+    const user = (await client.auth.getUser()).data.user;
+    const { data: p, error } = await client
+      .from('projects')
+      .insert({ ...data, owner_id: user.id })
+      .select().single();
+    if (error) throw error;
+    return p;
+  }
+
+  async function updateProject(id, changes) {
+    const { error } = await client
+      .from('projects')
+      .update({ ...changes, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+  }
+
+  async function deleteProject(id) {
+    const { error } = await client.from('projects').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  // ── Tasks ─────────────────────────────────────────────────────
+  async function getTasks(projectId) {
+    const { data, error } = await client
+      .from('tasks')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('sort_order', { ascending: true });
+    if (error) throw error;
+
+    // Fetch dependencies
+    if (data.length) {
+      const ids = data.map(t => t.id);
+      const { data: deps } = await client
+        .from('task_dependencies')
+        .select('*')
+        .in('task_id', ids);
+      const depMap = {};
+      (deps || []).forEach(d => {
+        if (!depMap[d.task_id]) depMap[d.task_id] = [];
+        depMap[d.task_id].push(d.depends_on);
+      });
+      return data.map(t => ({ ...t, dependencies: depMap[t.id] || [] }));
+    }
+    return data;
+  }
+
+  async function upsertTask(task) {
+    const { dependencies, ...taskData } = task;
+    const { data, error } = await client
+      .from('tasks')
+      .upsert(taskData, { onConflict: 'id' })
+      .select().single();
+    if (error) throw error;
+
+    // Update dependencies
+    if (dependencies !== undefined) {
+      await client.from('task_dependencies').delete().eq('task_id', data.id);
+      if (dependencies.length) {
+        await client.from('task_dependencies').insert(
+          dependencies.map(dep => ({ task_id: data.id, depends_on: dep }))
+        );
+      }
+    }
+    return data;
+  }
+
+  async function deleteTask(id) {
+    const { error } = await client.from('tasks').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  async function bulkUpdateTasks(tasks) {
+    for (const task of tasks) {
+      await upsertTask(task);
+    }
+  }
+
+  // ── Grants ────────────────────────────────────────────────────
+  async function getGrants(projectId) {
+    const { data, error } = await client
+      .from('grants')
+      .select('*, budget_categories(*)')
+      .eq('project_id', projectId);
+    if (error) throw error;
+    return data;
+  }
+
+  async function createGrant(data) {
+    const { data: g, error } = await client
+      .from('grants').insert(data).select().single();
+    if (error) throw error;
+    return g;
+  }
+
+  async function updateGrant(id, changes) {
+    const { error } = await client.from('grants').update(changes).eq('id', id);
+    if (error) throw error;
+  }
+
+  // ── Expenses ──────────────────────────────────────────────────
+  async function getExpenses(projectId) {
+    const { data, error } = await client
+      .from('expenses')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('expense_date', { ascending: false });
+    if (error) throw error;
+    return data;
+  }
+
+  async function createExpense(data) {
+    const user = (await client.auth.getUser()).data.user;
+    const { data: e, error } = await client
+      .from('expenses')
+      .insert({ ...data, submitted_by: user.id })
+      .select().single();
+    if (error) throw error;
+    return e;
+  }
+
+  async function updateExpense(id, changes) {
+    const { error } = await client.from('expenses').update(changes).eq('id', id);
+    if (error) throw error;
+  }
+
+  async function deleteExpense(id) {
+    const { error } = await client.from('expenses').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  return {
+    client,
+    getProjects, createProject, updateProject, deleteProject,
+    getTasks, upsertTask, deleteTask, bulkUpdateTasks,
+    getGrants, createGrant, updateGrant,
+    getExpenses, createExpense, updateExpense, deleteExpense,
+  };
+})();

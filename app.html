@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dissertation Tracker</title>
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <!-- Top nav -->
+  <nav class="topnav">
+    <a class="nav-logo" href="app.html">
+      <div class="nav-logo-mark"><svg viewBox="0 0 24 24"><path d="M3 3h18v4H3V3zm0 6h12v2H3V9zm0 4h18v2H3v-2zm0 4h10v2H3v-2z"/></svg></div>
+      <span class="nav-logo-text">Dissertation <span>Tracker</span></span>
+    </a>
+    <div class="nav-spacer"></div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="showView('projects')" id="tab-projects">Projects</button>
+      <button class="nav-tab" onclick="showView('gantt')" id="tab-gantt" style="display:none">Gantt</button>
+      <button class="nav-tab" onclick="showView('budget')" id="tab-budget" id="tab-budget">Budget</button>
+    </div>
+    <div class="nav-spacer"></div>
+    <div class="nav-user">
+      <span id="navName" style="font-size:13px;color:#5f6368;"></span>
+      <div class="nav-avatar" id="navAvatar" onclick="signOut()" title="Sign out">?</div>
+    </div>
+  </nav>
+
+  <!-- App shell -->
+  <div class="app-shell">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-section">Navigation</div>
+      <button class="sidebar-item active" id="si-projects" onclick="showView('projects')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        All Projects
+      </button>
+      <button class="sidebar-item" id="si-budget" onclick="showView('budget')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Research Budget
+      </button>
+
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-section">Projects</div>
+      <div id="sidebarProjects"></div>
+
+      <div class="sidebar-bottom">
+        <button class="sidebar-item" onclick="showView('settings')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          Settings
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main content area -->
+    <div class="main-content" id="mainContent">
+      <!-- Views injected here -->
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toast-wrap" id="toasts"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/gantt.js"></script>
+  <script src="js/budget.js"></script>
+  <script src="js/projects.js"></script>
+  <script>
+    // ── Init ──────────────────────────────────────────────────────
+    let currentUser = null;
+    let currentProjectId = null;
+    let currentView = 'projects';
+
+    async function init() {
+      const { data: { session } } = await DB.client.auth.getSession();
+      if (!session) { window.location.href = 'index.html'; return; }
+      currentUser = session.user;
+
+      // Set up nav
+      const meta = session.user.user_metadata;
+      const name = meta.full_name || meta.user_name || 'User';
+      document.getElementById('navName').textContent = name;
+      const avatar = document.getElementById('navAvatar');
+      if (meta.avatar_url) {
+        avatar.innerHTML = `<img src="${meta.avatar_url}" alt="${name}">`;
+      } else {
+        avatar.textContent = name[0].toUpperCase();
+      }
+
+      await loadSidebarProjects();
+      showView('projects');
+    }
+
+    async function loadSidebarProjects() {
+      const projects = await DB.getProjects();
+      const container = document.getElementById('sidebarProjects');
+      container.innerHTML = '';
+      projects.forEach(p => {
+        const pct = 0; // will calculate from tasks
+        const el = document.createElement('button');
+        el.className = 'sidebar-item' + (p.id === currentProjectId ? ' active' : '');
+        el.onclick = () => openProject(p.id);
+        el.innerHTML = `
+          <span class="sidebar-proj-dot" style="background:${p.color}"></span>
+          <span class="sidebar-proj-name">${esc(p.name)}</span>`;
+        container.appendChild(el);
+      });
+    }
+
+    // ── View switching ────────────────────────────────────────────
+    function showView(view, projectId) {
+      currentView = view;
+      if (projectId) currentProjectId = projectId;
+
+      // Update nav tabs
+      ['projects','gantt','budget'].forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        if (el) el.classList.toggle('active', t === view);
+      });
+
+      // Update sidebar
+      document.getElementById('si-projects').classList.toggle('active', view === 'projects');
+      document.getElementById('si-budget').classList.toggle('active', view === 'budget');
+      const ganttTab = document.getElementById('tab-gantt');
+      if (ganttTab) ganttTab.style.display = (view === 'gantt' ? '' : 'none');
+
+      const content = document.getElementById('mainContent');
+      if (view === 'projects')   Projects.render(content);
+      else if (view === 'gantt') Gantt.render(content, currentProjectId);
+      else if (view === 'budget') Budget.render(content, currentProjectId);
+    }
+
+    function openProject(id) {
+      currentProjectId = id;
+      document.getElementById('tab-gantt').style.display = '';
+      showView('gantt', id);
+      loadSidebarProjects();
+    }
+
+    async function signOut() {
+      if (!confirm('Sign out?')) return;
+      await DB.client.auth.signOut();
+      window.location.href = 'index.html';
+    }
+
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function toast(msg, type = '') {
+      const el = document.createElement('div');
+      el.className = 'toast ' + type; el.textContent = msg;
+      document.getElementById('toasts').appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }
+
+    window.toast = toast;
+    window.openProject = openProject;
+    window.showView = showView;
+    window.currentUser = () => currentUser;
+    window.currentProjectId = () => currentProjectId;
+
+    init();
+  </script>
+</body>
+</html>
