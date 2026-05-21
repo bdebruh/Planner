@@ -146,6 +146,36 @@ const DB = (() => {
     if (error) throw error;
   }
 
+  // ── Profiles ──────────────────────────────────────────────────
+  async function upsertProfile(profile) {
+    const { error } = await client.from('profiles').upsert(profile, { onConflict: 'id' });
+    if (error) throw error;
+  }
+
+  async function getProjectMembers(projectId) {
+    // Owner + anyone in project_access, joined with profiles
+    const { data: proj } = await client.from('projects').select('owner_id').eq('id', projectId).single();
+    const { data: access } = await client.from('project_access').select('user_id').eq('project_id', projectId);
+    const userIds = [...new Set([proj?.owner_id, ...(access||[]).map(a => a.user_id)].filter(Boolean))];
+    if (!userIds.length) return [];
+    const { data, error } = await client.from('profiles').select('*').in('id', userIds);
+    if (error) return [];
+    return data;
+  }
+
+  async function getTaskAssignees(taskId) {
+    const { data, error } = await client.from('task_assignees').select('user_id').eq('task_id', taskId);
+    if (error) return [];
+    return (data||[]).map(r => r.user_id);
+  }
+
+  async function setTaskAssignees(taskId, userIds) {
+    await client.from('task_assignees').delete().eq('task_id', taskId);
+    if (userIds.length) {
+      await client.from('task_assignees').insert(userIds.map(uid => ({ task_id: taskId, user_id: uid })));
+    }
+  }
+
   // ── Share tokens ──────────────────────────────────────────────
   async function createShareToken(projectId, role = 'editor') {
     const user = (await client.auth.getUser()).data.user;
@@ -195,6 +225,7 @@ const DB = (() => {
     getTasks, upsertTask, deleteTask, bulkUpdateTasks,
     getGrants, createGrant, updateGrant,
     getExpenses, createExpense, updateExpense, deleteExpense,
+    upsertProfile, getProjectMembers, getTaskAssignees, setTaskAssignees,
     createShareToken, getShareTokens, redeemShareToken, deleteShareToken,
   };
 })();

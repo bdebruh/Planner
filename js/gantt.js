@@ -73,11 +73,16 @@ const Gantt = (() => {
       : { start: D.add(new Date(),-14), total: 90 };
     const totalW = total * ppd;
 
+    container.style.height   = 'calc(100vh - 56px)';
+    container.style.overflow = 'hidden';
+
     container.innerHTML = `
       <div class="gantt-page" id="gp">
         <!-- Toolbar -->
         <div class="gantt-toolbar" id="gt">
-          <button class="btn btn-ghost btn-sm" onclick="showView('projects')" style="color:#1a5aa8;margin-right:4px;">← Projects</button>
+          <button class="btn btn-ghost btn-sm" onclick="showView('projects')" style="color:#1a5aa8;">← Projects</button>
+          <div class="tb-sep"></div>
+          <span style="font-size:14px;font-weight:700;color:#0f2d6b;margin-right:8px;">${esc(state.project?.name || '')}</span>
           <div class="tb-sep"></div>
           <button class="btn btn-ghost btn-sm" onclick="Gantt.addTask(false)">+ Task</button>
           <button class="btn btn-ghost btn-sm" onclick="Gantt.addTask(true)">◆ Milestone</button>
@@ -539,7 +544,7 @@ const Gantt = (() => {
     if (state.detailOpen && id) openDetail(id);
   }
 
-  function openDetail(id) {
+  async function openDetail(id) {
     state.selectedId = id;
     state.detailOpen = true;
     const panel = document.getElementById('detailPanel');
@@ -547,8 +552,15 @@ const Gantt = (() => {
     panel.style.display = '';
     const task = state.tasks.find(t=>t.id===id);
     if (!task) return;
-    const others = state.tasks.filter(t=>t.id!==id&&!descendants(id).includes(t.id));
-    const curDeps = task.dependencies||[];
+    const others   = state.tasks.filter(t=>t.id!==id&&!descendants(id).includes(t.id));
+    const curDeps  = task.dependencies||[];
+
+    // Load members + current assignees in parallel
+    const [members, assignedIds] = await Promise.all([
+      DB.getProjectMembers(state.projectId).catch(() => []),
+      DB.getTaskAssignees(id).catch(() => []),
+    ]);
+
     panel.innerHTML = `
       <div style="padding:16px 16px 12px;border-bottom:1px solid #f1f3f4;display:flex;align-items:center;justify-content:space-between;">
         <span style="font-size:14px;font-weight:600;color:#0f2d6b;">${esc(task.name)}</span>
@@ -584,6 +596,27 @@ const Gantt = (() => {
             </div>
           </div>
         </div>
+        ${members.length ? `
+        <div class="form-group">
+          <label>Assigned To</label>
+          <div style="display:flex;flex-direction:column;gap:6px;border:1.5px solid #dadce0;border-radius:8px;padding:8px;">
+            ${members.map(m => `
+              <label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;padding:3px 4px;border-radius:6px;${assignedIds.includes(m.id)?'background:#e8f0fe':''}">
+                <input type="checkbox" value="${m.id}" ${assignedIds.includes(m.id)?'checked':''}
+                  onchange="Gantt.toggleAssignee('${id}','${m.id}',this.checked)"
+                  style="accent-color:#1a5aa8;width:14px;height:14px;cursor:pointer;">
+                ${m.avatar_url ? `<img src="${m.avatar_url}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;">` : `<span style="width:22px;height:22px;border-radius:50%;background:#0f3460;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${(m.full_name||m.username||'?')[0].toUpperCase()}</span>`}
+                <span style="color:#0f2d6b;">${esc(m.full_name || m.username || 'Unknown')}</span>
+              </label>`).join('')}
+          </div>
+          ${members.length === 1 ? `<div style="font-size:11.5px;color:#80868b;margin-top:4px;">Share the project to add more team members.</div>` : ''}
+        </div>` : `
+        <div class="form-group">
+          <label>Assigned To</label>
+          <div style="font-size:13px;color:#80868b;padding:8px;border:1.5px solid #dadce0;border-radius:8px;">
+            No team members yet. Use the <strong>Share</strong> button on the project card to invite people.
+          </div>
+        </div>`}
         <div class="form-group">
           <label>Notes</label>
           <textarea class="textarea" id="det-notes" rows="3">${esc(task.notes||'')}</textarea>
@@ -692,10 +725,23 @@ const Gantt = (() => {
 
   function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+  async function toggleAssignee(taskId, userId, checked) {
+    try {
+      const current = await DB.getTaskAssignees(taskId);
+      const updated = checked
+        ? [...new Set([...current, userId])]
+        : current.filter(id => id !== userId);
+      await DB.setTaskAssignees(taskId, updated);
+      // Update highlight in panel
+      const label = document.querySelector(`input[value="${userId}"]`)?.closest('label');
+      if (label) label.style.background = checked ? '#e8f0fe' : '';
+    } catch(e) { console.error(e); }
+  }
+
   return {
     render, save, addTask, deleteSelected, indent, outdent,
     setZoom, scrollToday, openDetail, closeDetail, toggleDetail,
-    applyDetail, toggleDep, showCtx, hideCtx, markDirty, renderGantt,
+    applyDetail, toggleDep, toggleAssignee, showCtx, hideCtx, markDirty, renderGantt,
     // expose internal state for ctx menu inline onclick
     get state() { return state; },
   };

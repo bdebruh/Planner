@@ -71,6 +71,14 @@
 
       const meta = session.user.user_metadata;
       const name = meta.full_name || meta.user_name || 'User';
+
+      // Save profile so project members can see each other
+      DB.upsertProfile({
+        id: session.user.id,
+        username: meta.user_name || meta.preferred_username || '',
+        full_name: meta.full_name || name,
+        avatar_url: meta.avatar_url || '',
+      }).catch(() => {});
       document.getElementById('navName').textContent = name;
       const avatar = document.getElementById('navAvatar');
       if (meta.avatar_url) {
