@@ -169,8 +169,8 @@ const Gantt = (() => {
 
     renderTasks();
     renderTimeline(start, total, ppd);
-    renderPhases(start, total, ppd);
     renderBars(start, ppd, vis);
+    renderPhases(start, total, ppd);
     renderDeps(start, ppd, vis);
     renderTodayMarker(start, ppd);
     renderPopLines(start, total, ppd);
@@ -399,9 +399,9 @@ const Gantt = (() => {
       const band = document.createElement('div');
       band.className = 'phase-band';
       band.style.cssText = `position:absolute;left:${x}px;width:${w}px;top:0;
-        height:${bodyH}px;background:${ph.color}15;
-        border-left:2px solid ${ph.color}99;border-right:1px solid ${ph.color}44;
-        pointer-events:none;z-index:1;box-sizing:border-box;`;
+        height:${bodyH}px;background:${ph.color}12;
+        border-left:2px solid ${ph.color}88;border-right:1px solid ${ph.color}33;
+        pointer-events:none;z-index:0;box-sizing:border-box;`;
 
       // Phase name label pinned to top of the band
       const lbl = document.createElement('div');
@@ -432,38 +432,42 @@ const Gantt = (() => {
     const popStart = proj.start_date ? D.diff(start, D.parse(proj.start_date)) * ppd : 0;
     const popEnd   = proj.end_date   ? (D.diff(start, D.parse(proj.end_date)) + 1) * ppd : totalW;
 
-    // Shade OUTSIDE period grey (before project start)
+    // Grey out OUTSIDE period (before start + after end)
+    const greyStyle = `background:rgba(0,0,0,0.07);pointer-events:none;z-index:0;`;
     if (proj.start_date && popStart > 0) {
-      const shade = document.createElement('div');
-      shade.className = 'pop-shade';
-      shade.style.cssText = `position:absolute;left:0;width:${popStart}px;top:0;height:${bodyH}px;
-        background:rgba(0,0,0,0.06);pointer-events:none;z-index:1;`;
-      body.appendChild(shade);
-
-      // Also shade the day header cells
+      const s = document.createElement('div');
+      s.className = 'pop-shade';
+      s.style.cssText = `position:absolute;left:0;width:${popStart}px;top:0;height:${bodyH}px;${greyStyle}`;
+      body.appendChild(s);
       if (days) {
-        const ds = document.createElement('div');
-        ds.className = 'pop-day-shade';
-        ds.style.cssText = `position:absolute;left:0;width:${popStart}px;top:0;bottom:0;
-          background:rgba(0,0,0,0.06);pointer-events:none;`;
-        days.appendChild(ds);
+        const d = document.createElement('div');
+        d.className = 'pop-day-shade';
+        d.style.cssText = `position:absolute;left:0;width:${popStart}px;top:0;bottom:0;background:rgba(0,0,0,0.07);pointer-events:none;`;
+        days.appendChild(d);
+      }
+    }
+    if (proj.end_date && popEnd < totalW) {
+      const s = document.createElement('div');
+      s.className = 'pop-shade';
+      s.style.cssText = `position:absolute;left:${popEnd}px;width:${totalW-popEnd}px;top:0;height:${bodyH}px;${greyStyle}`;
+      body.appendChild(s);
+      if (days) {
+        const d = document.createElement('div');
+        d.className = 'pop-day-shade';
+        d.style.cssText = `position:absolute;left:${popEnd}px;width:${totalW-popEnd}px;top:0;bottom:0;background:rgba(0,0,0,0.07);pointer-events:none;`;
+        days.appendChild(d);
       }
     }
 
-    // Shade OUTSIDE period grey (after project end)
-    if (proj.end_date && popEnd < totalW) {
-      const shade = document.createElement('div');
-      shade.className = 'pop-shade';
-      shade.style.cssText = `position:absolute;left:${popEnd}px;width:${totalW - popEnd}px;top:0;height:${bodyH}px;
-        background:rgba(0,0,0,0.06);pointer-events:none;z-index:1;`;
-      body.appendChild(shade);
-
-      if (days) {
-        const ds = document.createElement('div');
-        ds.className = 'pop-day-shade';
-        ds.style.cssText = `position:absolute;left:${popEnd}px;width:${totalW - popEnd}px;top:0;bottom:0;
-          background:rgba(0,0,0,0.06);pointer-events:none;`;
-        days.appendChild(ds);
+    // Highlight the ACTIVE period with a very light blue tint
+    if (proj.start_date && proj.end_date) {
+      const activeW = popEnd - popStart;
+      if (activeW > 0) {
+        const active = document.createElement('div');
+        active.className = 'pop-shade';
+        active.style.cssText = `position:absolute;left:${popStart}px;width:${activeW}px;top:0;height:${bodyH}px;
+          background:rgba(26,115,232,0.03);pointer-events:none;z-index:0;`;
+        body.appendChild(active);
       }
     }
 
