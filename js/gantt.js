@@ -121,16 +121,13 @@ const Gantt = (() => {
         <div class="gantt-main" id="gm">
           <!-- Left: task list -->
           <div class="gantt-left" id="gl" style="width:${state.panelWidth}px">
-            <div class="task-header" style="height:78px;display:flex;flex-direction:column;padding:0;">
-              <div style="height:30px;background:#f8f9fa;border-bottom:2px solid rgba(15,45,107,.10);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:#80868b;text-transform:uppercase;letter-spacing:.06em;flex-shrink:0;">Phases</div>
-              <div style="flex:1;display:grid;grid-template-columns:28px 1fr 52px 72px 72px 44px;align-items:center;padding:0 8px;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em;">
-                <div style="text-align:center">#</div>
-                <div>Task Name</div>
-                <div style="text-align:right;padding-right:4px">Dur</div>
-                <div style="text-align:right;padding-right:4px">Start</div>
-                <div style="text-align:right;padding-right:4px">End</div>
-                <div style="text-align:right;padding-right:4px">%</div>
-              </div>
+            <div class="task-header">
+              <div style="text-align:center">#</div>
+              <div>Task Name</div>
+              <div style="text-align:right;padding-right:4px">Dur</div>
+              <div style="text-align:right;padding-right:4px">Start</div>
+              <div style="text-align:right;padding-right:4px">End</div>
+              <div style="text-align:right;padding-right:4px">%</div>
             </div>
             <div class="task-body" id="tb"></div>
             <div class="panel-resizer" id="pr"></div>
@@ -141,9 +138,8 @@ const Gantt = (() => {
             <div class="tl-scroll" id="tls" style="overflow-x:auto;overflow-y:hidden;display:flex;flex-direction:column;">
               <div style="width:${totalW}px;display:flex;flex-direction:column;min-height:100%">
                 <div class="tl-header" id="tlh" style="width:${totalW}px">
-                  <div id="tlp" style="position:relative;height:30px;background:#f8f9fa;border-bottom:2px solid rgba(15,45,107,.10);overflow:hidden;"></div>
                   <div class="tl-months" id="tlm" style="position:relative;height:24px;border-bottom:1px solid #f1f3f4;"></div>
-                  <div class="tl-days"   id="tld" style="position:relative;height:24px;border-bottom:2px solid rgba(15,45,107,.08);"></div>
+                  <div class="tl-days"   id="tld" style="position:relative;height:24px;"></div>
                 </div>
                 <div class="tl-body" id="tlb" style="position:relative;flex:1;min-height:${vis.length*ROW_H+60}px;overflow-y:auto;">
                   <svg class="dep-svg" id="dsvg" style="position:absolute;inset:0;width:${totalW}px;height:${vis.length*ROW_H+60}px;">
@@ -379,27 +375,38 @@ const Gantt = (() => {
     }
   }
 
-  // ── Phase bands in header ─────────────────────────────────────
+  // ── Phase bands — drawn as vertical columns in the tl-body ────
   function renderPhases(start, total, ppd) {
-    const row = document.getElementById('tlp');
-    if (!row) return;
-    row.innerHTML = '';
-    const phases = state.phases || [];
+    const body = document.getElementById('tlb');
+    if (!body) return;
+    body.querySelectorAll('.phase-band').forEach(e => e.remove());
+    const phases   = state.phases || [];
+    const bodyH    = Math.max(visible(state.tasks).length * ROW_H + 60, 200);
 
     phases.forEach(ph => {
-      const s   = D.parse(ph.start_date);
-      const e   = D.parse(ph.end_date);
+      const s = D.parse(ph.start_date);
+      const e = D.parse(ph.end_date);
       const x   = Math.max(0, D.diff(start, s)) * ppd;
       const end = Math.min(total, D.diff(start, e) + 1) * ppd;
       const w   = end - x;
       if (w <= 0) return;
 
-      const el = document.createElement('div');
-      el.style.cssText = `position:absolute;left:${x}px;width:${w}px;top:0;bottom:0;
-        background:${ph.color}22;border-left:2px solid ${ph.color};
-        display:flex;align-items:center;padding:0 6px;overflow:hidden;box-sizing:border-box;`;
-      el.innerHTML = `<span style="font-size:11px;font-weight:700;color:${ph.color};white-space:nowrap;letter-spacing:.04em;text-transform:uppercase;">${esc(ph.name)}</span>`;
-      row.appendChild(el);
+      const band = document.createElement('div');
+      band.className = 'phase-band';
+      band.style.cssText = `position:absolute;left:${x}px;width:${w}px;top:0;height:${bodyH}px;
+        background:${ph.color}18;border-left:2px solid ${ph.color}88;
+        border-right:1px solid ${ph.color}44;pointer-events:none;z-index:1;box-sizing:border-box;`;
+
+      // Label at the top of the band
+      const lbl = document.createElement('div');
+      lbl.style.cssText = `position:sticky;top:4px;display:inline-block;
+        margin:4px 0 0 6px;padding:2px 7px;border-radius:999px;
+        background:${ph.color};color:#fff;font-size:10px;font-weight:700;
+        letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;max-width:${w-16}px;
+        overflow:hidden;text-overflow:ellipsis;`;
+      lbl.textContent = ph.name;
+      band.appendChild(lbl);
+      body.appendChild(band);
     });
   }
 
