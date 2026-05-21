@@ -152,8 +152,8 @@ const Gantt = (() => {
                 </div>
               </div>
             </div>
-            <!-- Detail panel -->
-            <div id="detailPanel" style="display:none;position:absolute;right:0;top:0;bottom:0;width:320px;background:#fff;border-left:1px solid rgba(15,45,107,.10);overflow-y:auto;box-shadow:-4px 0 16px rgba(15,45,107,.08);z-index:40;"></div>
+            <!-- Detail panel — floating card -->
+            <div id="detailPanel" style="display:none;position:absolute;right:16px;top:12px;width:340px;max-height:calc(100% - 24px);background:#fff;border-radius:14px;border:1px solid rgba(15,45,107,.12);overflow-y:auto;box-shadow:0 8px 32px rgba(15,45,107,.18);z-index:40;"></div>
           </div>
         </div>
 
@@ -190,20 +190,26 @@ const Gantt = (() => {
       const depth    = getDepth(t.id);
       const isGroup  = hasChildren(t.id);
       const dur      = t.is_milestone ? '◆' : `${D.diff(D.parse(t.start_date),D.parse(t.end_date))+1}d`;
+      const done = !t.is_milestone && (t.progress || 0) >= 100;
       const row = document.createElement('div');
-      row.className = `task-row${t.id===state.selectedId?' selected':''}${isGroup?' is-group':''}`;
+      row.className = `task-row${t.id===state.selectedId?' selected':''}${isGroup?' is-group':''}${done?' done':''}`;
       row.dataset.id = t.id;
+      const taskColor = getTaskColor(t);
       row.innerHTML = `
-        <div class="tr-num">${i+1}</div>
+        <div class="tr-num" style="position:relative;">
+          ${!t.is_milestone ? `<input type="checkbox" ${done?'checked':''}
+            onclick="event.stopPropagation();Gantt.toggleDone('${t.id}',this.checked)"
+            style="width:14px;height:14px;cursor:pointer;accent-color:${taskColor};">`
+          : `<span style="font-size:10px;color:${taskColor};">◆</span>`}
+        </div>
         <div class="tr-name-wrap" style="padding-left:${depth*14}px">
           ${isGroup?`<button class="tr-toggle${t.collapsed?' collapsed':''}" data-tog="${t.id}">▾</button>`:'<span style="width:16px;display:inline-block"></span>'}
-          ${t.is_milestone?'<span style="color:#1a73e8;font-size:10px;margin-right:2px">◆</span>':''}
-          <span class="tr-name-text" title="${esc(t.name)}">${esc(t.name)}</span>
+          <span class="tr-name-text" title="${esc(t.name)}" style="${done?'text-decoration:line-through;color:#b0b0b5;':''}">${esc(t.name)}</span>
         </div>
-        <div class="tr-cell">${dur}</div>
-        <div class="tr-cell">${D.disp(D.parse(t.start_date))}</div>
-        <div class="tr-cell">${D.disp(D.parse(t.end_date))}</div>
-        <div class="tr-pct">${t.progress||0}%</div>`;
+        <div class="tr-cell" style="${done?'color:#b0b0b5;':''}">${dur}</div>
+        <div class="tr-cell" style="${done?'color:#b0b0b5;':''}">${D.disp(D.parse(t.start_date))}</div>
+        <div class="tr-cell" style="${done?'color:#b0b0b5;':''}">${D.disp(D.parse(t.end_date))}</div>
+        <div class="tr-pct" style="${done?'color:#1e8e3e;font-weight:700;':''}">${done?'✓':(t.progress||0)+'%'}</div>`;
 
       row.addEventListener('click', e => {
         if (e.target.closest('[data-tog]')) {
@@ -289,9 +295,10 @@ const Gantt = (() => {
         const dur  = D.diff(D.parse(t.start_date), D.parse(t.end_date)) + 1;
         const left = so * ppd;
         const w    = Math.max(dur * ppd - 2, 4);
-        const isGrp = hasChildren(t.id);
-        const color = getTaskColor(t);
-        const barColor = isGrp ? color+'cc' : color;
+        const isGrp  = hasChildren(t.id);
+        const color  = getTaskColor(t);
+        const done   = (t.progress || 0) >= 100;
+        const barColor = done ? '#b0b8c1' : (isGrp ? color+'cc' : color);
 
         const barEl = document.createElement('div');
         barEl.className = `gantt-bar${t.id===state.selectedId?' selected':''}${isGrp?' is-group':''}`;
@@ -863,6 +870,16 @@ const Gantt = (() => {
 
   function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+  function toggleDone(taskId, checked) {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    task.progress = checked ? 100 : 0;
+    rollupProgress(task.parent_id);
+    markDirty();
+    const c = document.getElementById('gp')?.parentElement;
+    if (c) renderGantt(c);
+  }
+
   async function toggleAssignee(taskId, userId, checked) {
     try {
       const current = await DB.getTaskAssignees(taskId);
@@ -1030,7 +1047,7 @@ const Gantt = (() => {
   return {
     render, save, addTask, deleteSelected, indent, outdent,
     setZoom, scrollToday, openDetail, closeDetail, toggleDetail,
-    applyDetail, toggleDep, toggleAssignee, showCtx, hideCtx, markDirty, renderGantt,
+    applyDetail, toggleDep, toggleDone, toggleAssignee, showCtx, hideCtx, markDirty, renderGantt,
     showPhasesModal, savePopDates, savePhasesFromModal, addPhaseRow, deletePhaseRow,
     updatePhaseField, setTaskColor,
     // expose internal state for ctx menu inline onclick
