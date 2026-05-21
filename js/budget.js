@@ -607,6 +607,82 @@ const Budget = (() => {
   }
 
   // ── Navigation ────────────────────────────────────────────────
+  // ── Budget category modal ─────────────────────────────────────
+  function _openCategoryModal(grantId) {
+    const grant = _budgets.find(g => g.id === grantId);
+    const cats  = ['Personnel','Fringe Benefits','Equipment','Travel',
+                   'Participant Support','Materials & Supplies','Consultants',
+                   'Indirect/F&A','Other Direct Costs'];
+    const periods = ['Year 1','Year 2','Year 3','Year 4','Year 5','No-cost Extension'];
+
+    _showModal(`
+      <div class="bud-modal-header">
+        <span>Add Budget Line — ${esc(grant?.grant_code||'')}</span>
+        <button class="bud-modal-close" onclick="Budget._closeModal()">✕</button>
+      </div>
+      <div class="bud-modal-body">
+        <div class="bud-form-grid">
+          <div class="bud-field">
+            <label>Category *</label>
+            <select id="cf-name" class="bud-input" onchange="document.getElementById('cf-custom-wrap').style.display=this.value==='__custom'?'':'none'">
+              ${cats.map(c=>`<option value="${c}">${c}</option>`).join('')}
+              <option value="__custom">Custom…</option>
+            </select>
+          </div>
+          <div class="bud-field" id="cf-custom-wrap" style="display:none">
+            <label>Custom Name</label>
+            <input type="text" id="cf-custom" class="bud-input" placeholder="Enter name">
+          </div>
+          <div class="bud-field">
+            <label>Budget Period</label>
+            <select id="cf-period" class="bud-input">
+              ${periods.map(p=>`<option>${p}</option>`).join('')}
+            </select>
+          </div>
+          <div class="bud-field">
+            <label>Budgeted Amount ($)</label>
+            <input type="number" id="cf-budget" class="bud-input" step="0.01" min="0" placeholder="0.00">
+          </div>
+        </div>
+      </div>
+      <div class="bud-modal-footer">
+        <button class="bud-btn-cancel" onclick="Budget._closeModal()">Cancel</button>
+        <button class="bud-btn-save" onclick="Budget._saveCategory('${grantId}')">Add Line Item</button>
+      </div>
+    `);
+  }
+
+  async function _saveCategory(grantId) {
+    const nameEl = document.getElementById('cf-name');
+    const name   = nameEl?.value === '__custom'
+      ? document.getElementById('cf-custom')?.value.trim()
+      : nameEl?.value;
+    const period   = document.getElementById('cf-period')?.value;
+    const budgeted = document.getElementById('cf-budget')?.value;
+    if (!name) { alert('Category name is required.'); return; }
+
+    const btn = document.querySelector('.bud-btn-save');
+    if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+    try {
+      const { data, error } = await DB.client.from('budget_categories')
+        .insert({ grant_id: grantId, name, period, budgeted: parseFloat(budgeted)||0 })
+        .select().single();
+      if (error) throw error;
+      const grant = _budgets.find(g => g.id === grantId);
+      if (grant) {
+        grant.budget_categories = grant.budget_categories || [];
+        grant.budget_categories.push(data);
+      }
+      if (_activeBudget?.id === grantId) _activeBudget = grant;
+      _closeModal();
+      toast('Budget line added.', 'success');
+      renderDetail();
+    } catch(e) {
+      alert('Save failed: ' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = 'Add Line Item'; }
+    }
+  }
+
   async function _openBudget(id) {
     _activeBudget = _budgets.find(b => b.id === id);
     if (!_activeBudget) return;
