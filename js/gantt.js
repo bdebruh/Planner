@@ -402,7 +402,7 @@ const Gantt = (() => {
       const band = document.createElement('div');
       band.className = 'phase-band';
       band.style.cssText = `
-        position:absolute; left:${x}px; width:${w}px; top:0; height:${bodyH}px;
+        position:absolute; left:${x}px; width:${w}px; top:0; bottom:0; min-height:100%;
         background:${ph.color}0d;
         border-left:2px solid ${ph.color}55;
         border-right:1px solid ${ph.color}22;
