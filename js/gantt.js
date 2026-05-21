@@ -77,6 +77,8 @@ const Gantt = (() => {
       <div class="gantt-page" id="gp">
         <!-- Toolbar -->
         <div class="gantt-toolbar" id="gt">
+          <button class="btn btn-ghost btn-sm" onclick="showView('projects')" style="color:#1a5aa8;margin-right:4px;">← Projects</button>
+          <div class="tb-sep"></div>
           <button class="btn btn-ghost btn-sm" onclick="Gantt.addTask(false)">+ Task</button>
           <button class="btn btn-ghost btn-sm" onclick="Gantt.addTask(true)">◆ Milestone</button>
           <div class="tb-sep"></div>
