@@ -52,7 +52,7 @@
       btn.disabled = true; btn.textContent = 'Redirecting to GitHub…';
       const { error } = await db.auth.signInWithOAuth({
         provider: 'github',
-        options: { redirectTo: window.location.origin + '/app.html' }
+        options: { redirectTo: window.location.href.replace(/index\.html.*$/, '') + 'app.html' }
       });
       if (error) {
         document.getElementById('loginError').style.display = '';
