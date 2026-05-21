@@ -121,7 +121,6 @@ const Gantt = (() => {
         <div class="gantt-main" id="gm">
           <!-- Left: task list -->
           <div class="gantt-left" id="gl" style="width:${state.panelWidth}px">
-            <div style="height:26px;background:#f0f4ff;border-bottom:1px solid #dce6ff;flex-shrink:0;"></div>
             <div class="task-header">
               <div style="text-align:center">#</div>
               <div>Task Name</div>
@@ -139,7 +138,6 @@ const Gantt = (() => {
             <div class="tl-scroll" id="tls" style="overflow-x:auto;overflow-y:hidden;display:flex;flex-direction:column;">
               <div style="width:${totalW}px;display:flex;flex-direction:column;min-height:100%">
                 <div class="tl-header" id="tlh" style="width:${totalW}px">
-                  <div id="tlp" style="position:relative;height:26px;background:#f0f4ff;border-bottom:1px solid #dce6ff;overflow:hidden;"></div>
                   <div class="tl-months" id="tlm" style="position:relative;height:24px;border-bottom:1px solid #f1f3f4;"></div>
                   <div class="tl-days"   id="tld" style="position:relative;height:24px;"></div>
                 </div>
@@ -385,25 +383,36 @@ const Gantt = (() => {
     }
   }
 
-  // ── Phase bands in header row ─────────────────────────────────
+  // ── Phase bands — vertical columns behind bars in the body ────
   function renderPhases(start, total, ppd) {
-    const row = document.getElementById('tlp');
-    if (!row) return;
-    row.innerHTML = '';
+    const body = document.getElementById('tlb');
+    if (!body) return;
+    body.querySelectorAll('.phase-band').forEach(e => e.remove());
+
+    const bodyH = Math.max(visible(state.tasks).length * ROW_H + 60, 200);
 
     (state.phases || []).forEach(ph => {
       const x = Math.max(0, D.diff(start, D.parse(ph.start_date))) * ppd;
       const w = (Math.min(total, D.diff(start, D.parse(ph.end_date)) + 1) * ppd) - x;
       if (w <= 0) return;
 
-      const el = document.createElement('div');
-      el.style.cssText = `position:absolute;left:${x}px;width:${w}px;top:0;bottom:0;
-        background:${ph.color};display:flex;align-items:center;padding:0 8px;
-        overflow:hidden;box-sizing:border-box;border-right:1px solid rgba(255,255,255,.3);`;
-      el.innerHTML = `<span style="font-size:10.5px;font-weight:700;color:#fff;
-        white-space:nowrap;letter-spacing:.05em;text-transform:uppercase;
-        overflow:hidden;text-overflow:ellipsis;">${esc(ph.name)}</span>`;
-      row.appendChild(el);
+      const band = document.createElement('div');
+      band.className = 'phase-band';
+      band.style.cssText = `position:absolute;left:${x}px;width:${w}px;top:0;
+        height:${bodyH}px;background:${ph.color}15;
+        border-left:2px solid ${ph.color}99;border-right:1px solid ${ph.color}44;
+        pointer-events:none;z-index:1;box-sizing:border-box;`;
+
+      // Phase name label pinned to top of the band
+      const lbl = document.createElement('div');
+      lbl.style.cssText = `position:absolute;top:4px;left:6px;right:6px;
+        padding:2px 8px;border-radius:999px;background:${ph.color};
+        color:#fff;font-size:10px;font-weight:700;letter-spacing:.05em;
+        text-transform:uppercase;white-space:nowrap;overflow:hidden;
+        text-overflow:ellipsis;display:inline-block;max-width:calc(100% - 12px);`;
+      lbl.textContent = ph.name;
+      band.appendChild(lbl);
+      body.appendChild(band);
     });
   }
 
