@@ -146,6 +146,22 @@ const DB = (() => {
     if (error) throw error;
   }
 
+  // ── Phases ────────────────────────────────────────────────────
+  async function getPhases(projectId) {
+    const { data, error } = await client.from('project_phases').select('*').eq('project_id', projectId).order('start_date');
+    if (error) return [];
+    return data || [];
+  }
+  async function upsertPhase(phase) {
+    const { data, error } = await client.from('project_phases').upsert(phase, { onConflict: 'id' }).select().single();
+    if (error) throw error;
+    return data;
+  }
+  async function deletePhase(id) {
+    const { error } = await client.from('project_phases').delete().eq('id', id);
+    if (error) throw error;
+  }
+
   // ── Profiles ──────────────────────────────────────────────────
   async function upsertProfile(profile) {
     const { error } = await client.from('profiles').upsert(profile, { onConflict: 'id' });
@@ -225,6 +241,7 @@ const DB = (() => {
     getTasks, upsertTask, deleteTask, bulkUpdateTasks,
     getGrants, createGrant, updateGrant,
     getExpenses, createExpense, updateExpense, deleteExpense,
+    getPhases, upsertPhase, deletePhase,
     upsertProfile, getProjectMembers, getTaskAssignees, setTaskAssignees,
     createShareToken, getShareTokens, redeemShareToken, deleteShareToken,
   };

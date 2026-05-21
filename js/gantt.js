@@ -56,13 +56,26 @@ const Gantt = (() => {
     container.innerHTML = '<div style="padding:60px;text-align:center;color:#80868b;">Loading…</div>';
 
     try {
-      const [projects, tasks] = await Promise.all([DB.getProjects(), DB.getTasks(projectId)]);
+      const [projects, tasks, phases] = await Promise.all([
+        DB.getProjects(), DB.getTasks(projectId), DB.getPhases(projectId)
+      ]);
       state.project = projects.find(p => p.id === projectId);
       state.tasks   = tasks;
+      state.phases  = phases;
       renderGantt(container);
     } catch(e) {
       container.innerHTML = `<div class="page"><p style="color:#b91c1c;">${e.message}</p></div>`;
     }
+  }
+
+  // ── Task color (inherits from top-level parent) ───────────────
+  function getTaskColor(task) {
+    if (task.color) return task.color;
+    if (task.parent_id) {
+      const parent = state.tasks.find(t => t.id === task.parent_id);
+      if (parent) return getTaskColor(parent);
+    }
+    return state.project?.color || '#1a73e8';
   }
 
   function renderGantt(container) {
@@ -99,6 +112,7 @@ const Gantt = (() => {
           </div>
           <button class="btn btn-ghost btn-sm" onclick="Gantt.scrollToday()">Today</button>
           <div style="flex:1"></div>
+          <button class="btn btn-ghost btn-sm" onclick="Gantt.showPhasesModal()">⬛ Phases</button>
           <button class="btn btn-ghost btn-sm" onclick="Gantt.toggleDetail()" id="btn-detail">Details</button>
           <button class="btn btn-primary btn-sm" onclick="Gantt.save()" id="btn-save">
             ${state.dirty ? '● Save' : 'Saved'}
@@ -109,6 +123,7 @@ const Gantt = (() => {
         <div class="gantt-main" id="gm">
           <!-- Left: task list -->
           <div class="gantt-left" id="gl" style="width:${state.panelWidth}px">
+            <div class="phase-spacer" style="height:30px;background:#f8f9fa;border-bottom:2px solid rgba(15,45,107,.10);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:#80868b;text-transform:uppercase;letter-spacing:.06em;">Phases</div>
             <div class="task-header">
               <div style="text-align:center">#</div>
               <div>Task Name</div>
@@ -126,6 +141,7 @@ const Gantt = (() => {
             <div class="tl-scroll" id="tls" style="overflow-x:auto;overflow-y:hidden;display:flex;flex-direction:column;">
               <div style="width:${totalW}px;display:flex;flex-direction:column;min-height:100%">
                 <div class="tl-header" id="tlh" style="width:${totalW}px">
+                  <div id="tlp" style="position:relative;height:30px;background:#f8f9fa;border-bottom:2px solid rgba(15,45,107,.10);overflow:hidden;"></div>
                   <div class="tl-months" id="tlm" style="position:relative;height:24px;border-bottom:1px solid #f1f3f4;"></div>
                   <div class="tl-days"   id="tld" style="position:relative;height:24px;"></div>
                 </div>
@@ -157,9 +173,11 @@ const Gantt = (() => {
 
     renderTasks();
     renderTimeline(start, total, ppd);
+    renderPhases(start, total, ppd);
     renderBars(start, ppd, vis);
     renderDeps(start, ppd, vis);
     renderTodayMarker(start, ppd);
+    renderPopLines(start, total, ppd);
     syncScroll();
     setupPanelResize();
     setupKeyboard();
@@ -249,7 +267,6 @@ const Gantt = (() => {
 
   function renderBars(start, ppd, vis) {
     const body  = document.getElementById('tlb');
-    const color = state.project?.color || '#1a73e8';
     // Remove existing bar rows
     body.querySelectorAll('.bar-row').forEach(el => el.remove());
 
@@ -274,6 +291,7 @@ const Gantt = (() => {
         const left = so * ppd;
         const w    = Math.max(dur * ppd - 2, 4);
         const isGrp = hasChildren(t.id);
+        const color = getTaskColor(t);
         const barColor = isGrp ? color+'cc' : color;
 
         const barEl = document.createElement('div');
@@ -358,6 +376,64 @@ const Gantt = (() => {
       line.style.left = `${off*ppd+ppd/2}px`;
       line.innerHTML  = '<span class="today-lbl">Today</span>';
       body.appendChild(line);
+    }
+  }
+
+  // ── Phase bands in header ─────────────────────────────────────
+  function renderPhases(start, total, ppd) {
+    const row = document.getElementById('tlp');
+    if (!row) return;
+    row.innerHTML = '';
+    const phases = state.phases || [];
+
+    phases.forEach(ph => {
+      const s   = D.parse(ph.start_date);
+      const e   = D.parse(ph.end_date);
+      const x   = Math.max(0, D.diff(start, s)) * ppd;
+      const end = Math.min(total, D.diff(start, e) + 1) * ppd;
+      const w   = end - x;
+      if (w <= 0) return;
+
+      const el = document.createElement('div');
+      el.style.cssText = `position:absolute;left:${x}px;width:${w}px;top:0;bottom:0;
+        background:${ph.color}22;border-left:2px solid ${ph.color};
+        display:flex;align-items:center;padding:0 6px;overflow:hidden;box-sizing:border-box;`;
+      el.innerHTML = `<span style="font-size:11px;font-weight:700;color:${ph.color};white-space:nowrap;letter-spacing:.04em;text-transform:uppercase;">${esc(ph.name)}</span>`;
+      row.appendChild(el);
+    });
+  }
+
+  // ── Period-of-performance lines ───────────────────────────────
+  function renderPopLines(start, total, ppd) {
+    const body = document.getElementById('tlb');
+    body.querySelectorAll('.pop-line').forEach(e => e.remove());
+    const proj = state.project;
+    if (!proj) return;
+
+    const height = (visible(state.tasks).length * ROW_H + 60) + 'px';
+
+    if (proj.start_date) {
+      const off = D.diff(start, D.parse(proj.start_date));
+      if (off >= 0 && off <= total) {
+        const line = document.createElement('div');
+        line.className = 'pop-line';
+        line.style.cssText = `position:absolute;left:${off*ppd}px;top:0;height:${height};
+          width:2px;background:#1e8e3e;z-index:8;pointer-events:none;`;
+        line.innerHTML = `<span style="position:absolute;top:4px;left:4px;font-size:10px;font-weight:700;color:#1e8e3e;white-space:nowrap;background:rgba(255,255,255,.85);padding:1px 4px;border-radius:3px;">Project Start</span>`;
+        body.appendChild(line);
+      }
+    }
+
+    if (proj.end_date) {
+      const off = D.diff(start, D.parse(proj.end_date));
+      if (off >= 0 && off <= total) {
+        const line = document.createElement('div');
+        line.className = 'pop-line';
+        line.style.cssText = `position:absolute;left:${off*ppd}px;top:0;height:${height};
+          width:2px;background:#d93025;z-index:8;pointer-events:none;`;
+        line.innerHTML = `<span style="position:absolute;top:4px;left:4px;font-size:10px;font-weight:700;color:#d93025;white-space:nowrap;background:rgba(255,255,255,.85);padding:1px 4px;border-radius:3px;">Project End</span>`;
+        body.appendChild(line);
+      }
     }
   }
 
@@ -558,6 +634,7 @@ const Gantt = (() => {
           <label>Task Name</label>
           <input class="input" id="det-name" value="${esc(task.name)}">
         </div>
+        ${colorPickerHtml(id, task.color)}
         ${!task.is_milestone?`<div class="form-group">
           <label>Start Date</label>
           <input type="date" class="input" id="det-start" value="${task.start_date}">
@@ -725,10 +802,163 @@ const Gantt = (() => {
     } catch(e) { console.error(e); }
   }
 
+  // ── Phases modal ──────────────────────────────────────────────
+  const COLORS = ['#1a73e8','#1e8e3e','#e37400','#d93025','#9334e6','#007b83','#0f3460','#f29900','#c5221f','#137333'];
+
+  function showPhasesModal() {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop open';
+    backdrop.id = 'phases-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal" style="max-width:560px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
+        <div class="modal-header">
+          <span class="modal-title">Phases &amp; Period of Performance</span>
+          <button class="modal-close" onclick="document.getElementById('phases-backdrop').remove()">✕</button>
+        </div>
+        <div class="modal-body" style="overflow-y:auto;flex:1;">
+
+          <!-- Period of performance -->
+          <div style="margin-bottom:20px;">
+            <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#80868b;margin-bottom:10px;">Period of Performance</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div>
+                <label style="font-size:12.5px;font-weight:500;color:#5f6368;display:block;margin-bottom:4px;">Project Start</label>
+                <input type="date" id="pop-start" class="input" value="${state.project?.start_date||''}">
+              </div>
+              <div>
+                <label style="font-size:12.5px;font-weight:500;color:#5f6368;display:block;margin-bottom:4px;">Project End</label>
+                <input type="date" id="pop-end" class="input" value="${state.project?.end_date||''}">
+              </div>
+            </div>
+            <button class="btn btn-primary" style="margin-top:10px;" onclick="Gantt.savePopDates()">Save Dates</button>
+          </div>
+
+          <div style="border-top:1px solid #f1f3f4;padding-top:18px;margin-bottom:12px;">
+            <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#80868b;margin-bottom:10px;">Phase Bands</div>
+            <div id="phases-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+            <button class="btn btn-ghost" onclick="Gantt.addPhaseRow()">+ Add Phase</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+    backdrop.addEventListener('click', e => { if(e.target===backdrop) backdrop.remove(); });
+    renderPhasesList();
+  }
+
+  function renderPhasesList() {
+    const list = document.getElementById('phases-list');
+    if (!list) return;
+    const phases = state.phases || [];
+    if (!phases.length) {
+      list.innerHTML = '<div style="font-size:13px;color:#80868b;">No phases yet. Click + Add Phase to create one.</div>';
+      return;
+    }
+    list.innerHTML = phases.map((ph, i) => `
+      <div style="display:grid;grid-template-columns:1fr 100px 100px 28px 28px;gap:8px;align-items:center;background:#f8f9fa;border-radius:8px;padding:8px 10px;">
+        <input class="input" value="${esc(ph.name)}" placeholder="Phase name" oninput="Gantt.updatePhaseField(${i},'name',this.value)" style="font-size:13px;">
+        <input type="date" class="input" value="${ph.start_date}" oninput="Gantt.updatePhaseField(${i},'start_date',this.value)" style="font-size:12px;">
+        <input type="date" class="input" value="${ph.end_date}" oninput="Gantt.updatePhaseField(${i},'end_date',this.value)" style="font-size:12px;">
+        <input type="color" value="${ph.color}" oninput="Gantt.updatePhaseField(${i},'color',this.value)" style="width:28px;height:28px;border:none;padding:0;cursor:pointer;border-radius:4px;">
+        <button onclick="Gantt.deletePhaseRow(${i})" style="background:none;border:none;cursor:pointer;font-size:16px;color:#b91c1c;line-height:1;">×</button>
+      </div>`).join('');
+  }
+
+  function updatePhaseField(idx, field, val) {
+    if (!state.phases[idx]) return;
+    state.phases[idx][field] = val;
+  }
+
+  function addPhaseRow() {
+    const today = D.fmt(new Date());
+    state.phases.push({
+      id: crypto.randomUUID(),
+      project_id: state.projectId,
+      name: 'New Phase',
+      start_date: today,
+      end_date: D.fmt(D.add(new Date(), 30)),
+      color: COLORS[state.phases.length % COLORS.length],
+      sort_order: state.phases.length,
+    });
+    renderPhasesList();
+  }
+
+  async function deletePhaseRow(idx) {
+    const ph = state.phases[idx];
+    if (ph?.id) {
+      try { await DB.deletePhase(ph.id); } catch(e) {}
+    }
+    state.phases.splice(idx, 1);
+    renderPhasesList();
+    const c = document.getElementById('gp')?.parentElement;
+    if (c) { const {start,total} = state.tasks.length ? timelineRange(state.tasks) : {start:D.add(new Date(),-14),total:90}; const ppd=ZOOM_PPD[state.zoom]; renderPhases(start,total,ppd); }
+  }
+
+  async function savePhasesFromModal() {
+    try {
+      for (const ph of state.phases) {
+        if (!ph.name || !ph.start_date || !ph.end_date) continue;
+        await DB.upsertPhase(ph);
+      }
+      const c = document.getElementById('gp')?.parentElement;
+      if (c) renderGantt(c);
+      document.getElementById('phases-backdrop')?.remove();
+      toast('Phases saved ✓', 'success');
+    } catch(e) { toast('Save failed: ' + e.message, 'error'); }
+  }
+
+  async function savePopDates() {
+    const start = document.getElementById('pop-start')?.value || null;
+    const end   = document.getElementById('pop-end')?.value || null;
+    try {
+      await DB.updateProject(state.projectId, { start_date: start, end_date: end });
+      if (state.project) { state.project.start_date = start; state.project.end_date = end; }
+      // Save phases too
+      await savePhasesFromModal();
+    } catch(e) { toast('Save failed: ' + e.message, 'error'); }
+  }
+
+  // ── Task color picker in detail ───────────────────────────────
+  function colorPickerHtml(taskId, currentColor) {
+    return `
+      <div class="form-group">
+        <label>Color <span style="font-size:11px;color:#80868b;">(sets color for this group and its children)</span></label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          ${COLORS.map(c => `
+            <div onclick="Gantt.setTaskColor('${taskId}','${c}')"
+              style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;
+              box-shadow:${(currentColor||state.project?.color)===c?'0 0 0 3px #0f3460':'none'};
+              transition:box-shadow .12s;" title="${c}"></div>`).join('')}
+          <input type="color" value="${currentColor||state.project?.color||'#1a73e8'}"
+            oninput="Gantt.setTaskColor('${taskId}',this.value)"
+            style="width:28px;height:28px;border:none;padding:0;cursor:pointer;border-radius:4px;margin-left:4px;" title="Custom color">
+        </div>
+      </div>`;
+  }
+
+  function setTaskColor(taskId, color) {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    task.color = color;
+    markDirty();
+    // Re-render just bars for performance
+    const { start, total } = state.tasks.length ? timelineRange(state.tasks) : { start: D.add(new Date(),-14), total:90 };
+    const ppd = ZOOM_PPD[state.zoom];
+    const vis = visible(state.tasks);
+    renderBars(start, ppd, vis);
+    renderTasks();
+    // Update color swatches
+    document.querySelectorAll('[onclick^="Gantt.setTaskColor"]').forEach(el => {
+      const c = el.getAttribute('onclick').match(/'([^']+)'$/)?.[1];
+      if (c) el.style.boxShadow = c === color ? '0 0 0 3px #0f3460' : 'none';
+    });
+  }
+
   return {
     render, save, addTask, deleteSelected, indent, outdent,
     setZoom, scrollToday, openDetail, closeDetail, toggleDetail,
     applyDetail, toggleDep, toggleAssignee, showCtx, hideCtx, markDirty, renderGantt,
+    showPhasesModal, savePopDates, savePhasesFromModal, addPhaseRow, deletePhaseRow,
+    updatePhaseField, setTaskColor,
     // expose internal state for ctx menu inline onclick
     get state() { return state; },
   };
