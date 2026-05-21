@@ -121,6 +121,7 @@ const Gantt = (() => {
         <div class="gantt-main" id="gm">
           <!-- Left: task list -->
           <div class="gantt-left" id="gl" style="width:${state.panelWidth}px">
+            <div style="height:26px;background:#f0f4ff;border-bottom:1px solid #dce6ff;flex-shrink:0;"></div>
             <div class="task-header">
               <div style="text-align:center">#</div>
               <div>Task Name</div>
@@ -138,6 +139,7 @@ const Gantt = (() => {
             <div class="tl-scroll" id="tls" style="overflow-x:auto;overflow-y:hidden;display:flex;flex-direction:column;">
               <div style="width:${totalW}px;display:flex;flex-direction:column;min-height:100%">
                 <div class="tl-header" id="tlh" style="width:${totalW}px">
+                  <div id="tlp" style="position:relative;height:26px;background:#f0f4ff;border-bottom:1px solid #dce6ff;overflow:hidden;"></div>
                   <div class="tl-months" id="tlm" style="position:relative;height:24px;border-bottom:1px solid #f1f3f4;"></div>
                   <div class="tl-days"   id="tld" style="position:relative;height:24px;"></div>
                 </div>
@@ -375,72 +377,103 @@ const Gantt = (() => {
     }
   }
 
-  // ── Phase bands — drawn as vertical columns in the tl-body ────
+  // ── Phase bands in header row ─────────────────────────────────
   function renderPhases(start, total, ppd) {
-    const body = document.getElementById('tlb');
-    if (!body) return;
-    body.querySelectorAll('.phase-band').forEach(e => e.remove());
-    const phases   = state.phases || [];
-    const bodyH    = Math.max(visible(state.tasks).length * ROW_H + 60, 200);
+    const row = document.getElementById('tlp');
+    if (!row) return;
+    row.innerHTML = '';
 
-    phases.forEach(ph => {
-      const s = D.parse(ph.start_date);
-      const e = D.parse(ph.end_date);
-      const x   = Math.max(0, D.diff(start, s)) * ppd;
-      const end = Math.min(total, D.diff(start, e) + 1) * ppd;
-      const w   = end - x;
+    (state.phases || []).forEach(ph => {
+      const x = Math.max(0, D.diff(start, D.parse(ph.start_date))) * ppd;
+      const w = (Math.min(total, D.diff(start, D.parse(ph.end_date)) + 1) * ppd) - x;
       if (w <= 0) return;
 
-      const band = document.createElement('div');
-      band.className = 'phase-band';
-      band.style.cssText = `position:absolute;left:${x}px;width:${w}px;top:0;height:${bodyH}px;
-        background:${ph.color}18;border-left:2px solid ${ph.color}88;
-        border-right:1px solid ${ph.color}44;pointer-events:none;z-index:1;box-sizing:border-box;`;
-
-      // Label at the top of the band
-      const lbl = document.createElement('div');
-      lbl.style.cssText = `position:sticky;top:4px;display:inline-block;
-        margin:4px 0 0 6px;padding:2px 7px;border-radius:999px;
-        background:${ph.color};color:#fff;font-size:10px;font-weight:700;
-        letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;max-width:${w-16}px;
-        overflow:hidden;text-overflow:ellipsis;`;
-      lbl.textContent = ph.name;
-      band.appendChild(lbl);
-      body.appendChild(band);
+      const el = document.createElement('div');
+      el.style.cssText = `position:absolute;left:${x}px;width:${w}px;top:0;bottom:0;
+        background:${ph.color};display:flex;align-items:center;padding:0 8px;
+        overflow:hidden;box-sizing:border-box;border-right:1px solid rgba(255,255,255,.3);`;
+      el.innerHTML = `<span style="font-size:10.5px;font-weight:700;color:#fff;
+        white-space:nowrap;letter-spacing:.05em;text-transform:uppercase;
+        overflow:hidden;text-overflow:ellipsis;">${esc(ph.name)}</span>`;
+      row.appendChild(el);
     });
   }
 
-  // ── Period-of-performance lines ───────────────────────────────
+  // ── Period-of-performance shading ────────────────────────────
   function renderPopLines(start, total, ppd) {
     const body = document.getElementById('tlb');
-    body.querySelectorAll('.pop-line').forEach(e => e.remove());
+    const days  = document.getElementById('tld');
+    body.querySelectorAll('.pop-shade,.pop-line').forEach(e => e.remove());
+    days?.querySelectorAll('.pop-day-shade').forEach(e => e.remove());
+
     const proj = state.project;
-    if (!proj) return;
+    if (!proj || (!proj.start_date && !proj.end_date)) return;
 
-    const height = (visible(state.tasks).length * ROW_H + 60) + 'px';
+    const bodyH = (visible(state.tasks).length * ROW_H + 60);
+    const totalW = total * ppd;
 
-    if (proj.start_date) {
-      const off = D.diff(start, D.parse(proj.start_date));
-      if (off >= 0 && off <= total) {
-        const line = document.createElement('div');
-        line.className = 'pop-line';
-        line.style.cssText = `position:absolute;left:${off*ppd}px;top:0;height:${height};
-          width:2px;background:#1e8e3e;z-index:8;pointer-events:none;`;
-        line.innerHTML = `<span style="position:absolute;top:4px;left:4px;font-size:10px;font-weight:700;color:#1e8e3e;white-space:nowrap;background:rgba(255,255,255,.85);padding:1px 4px;border-radius:3px;">Project Start</span>`;
-        body.appendChild(line);
+    const popStart = proj.start_date ? D.diff(start, D.parse(proj.start_date)) * ppd : 0;
+    const popEnd   = proj.end_date   ? (D.diff(start, D.parse(proj.end_date)) + 1) * ppd : totalW;
+
+    // Shade OUTSIDE period grey (before project start)
+    if (proj.start_date && popStart > 0) {
+      const shade = document.createElement('div');
+      shade.className = 'pop-shade';
+      shade.style.cssText = `position:absolute;left:0;width:${popStart}px;top:0;height:${bodyH}px;
+        background:rgba(0,0,0,0.06);pointer-events:none;z-index:1;`;
+      body.appendChild(shade);
+
+      // Also shade the day header cells
+      if (days) {
+        const ds = document.createElement('div');
+        ds.className = 'pop-day-shade';
+        ds.style.cssText = `position:absolute;left:0;width:${popStart}px;top:0;bottom:0;
+          background:rgba(0,0,0,0.06);pointer-events:none;`;
+        days.appendChild(ds);
       }
     }
 
-    if (proj.end_date) {
-      const off = D.diff(start, D.parse(proj.end_date));
-      if (off >= 0 && off <= total) {
-        const line = document.createElement('div');
-        line.className = 'pop-line';
-        line.style.cssText = `position:absolute;left:${off*ppd}px;top:0;height:${height};
-          width:2px;background:#d93025;z-index:8;pointer-events:none;`;
-        line.innerHTML = `<span style="position:absolute;top:4px;left:4px;font-size:10px;font-weight:700;color:#d93025;white-space:nowrap;background:rgba(255,255,255,.85);padding:1px 4px;border-radius:3px;">Project End</span>`;
-        body.appendChild(line);
+    // Shade OUTSIDE period grey (after project end)
+    if (proj.end_date && popEnd < totalW) {
+      const shade = document.createElement('div');
+      shade.className = 'pop-shade';
+      shade.style.cssText = `position:absolute;left:${popEnd}px;width:${totalW - popEnd}px;top:0;height:${bodyH}px;
+        background:rgba(0,0,0,0.06);pointer-events:none;z-index:1;`;
+      body.appendChild(shade);
+
+      if (days) {
+        const ds = document.createElement('div');
+        ds.className = 'pop-day-shade';
+        ds.style.cssText = `position:absolute;left:${popEnd}px;width:${totalW - popEnd}px;top:0;bottom:0;
+          background:rgba(0,0,0,0.06);pointer-events:none;`;
+        days.appendChild(ds);
       }
+    }
+
+    // Project start boundary line
+    if (proj.start_date) {
+      const x = D.diff(start, D.parse(proj.start_date)) * ppd;
+      const line = document.createElement('div');
+      line.className = 'pop-line';
+      line.style.cssText = `position:absolute;left:${x}px;top:0;height:${bodyH}px;
+        width:2px;background:#1e8e3e;z-index:8;pointer-events:none;`;
+      line.innerHTML = `<span style="position:absolute;top:3px;left:4px;font-size:9.5px;
+        font-weight:700;color:#1e8e3e;white-space:nowrap;background:rgba(255,255,255,.9);
+        padding:1px 5px;border-radius:3px;border:1px solid #1e8e3e;">Start</span>`;
+      body.appendChild(line);
+    }
+
+    // Project end boundary line
+    if (proj.end_date) {
+      const x = (D.diff(start, D.parse(proj.end_date)) + 1) * ppd;
+      const line = document.createElement('div');
+      line.className = 'pop-line';
+      line.style.cssText = `position:absolute;left:${x}px;top:0;height:${bodyH}px;
+        width:2px;background:#d93025;z-index:8;pointer-events:none;`;
+      line.innerHTML = `<span style="position:absolute;top:3px;left:4px;font-size:9.5px;
+        font-weight:700;color:#d93025;white-space:nowrap;background:rgba(255,255,255,.9);
+        padding:1px 5px;border-radius:3px;border:1px solid #d93025;">End</span>`;
+      body.appendChild(line);
     }
   }
 
