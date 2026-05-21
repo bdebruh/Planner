@@ -114,9 +114,7 @@ const Gantt = (() => {
           <div style="flex:1"></div>
           <button class="btn btn-ghost btn-sm" onclick="Gantt.showPhasesModal()">⬛ Phases</button>
           <button class="btn btn-ghost btn-sm" onclick="Gantt.toggleDetail()" id="btn-detail">Details</button>
-          <button class="btn btn-primary btn-sm" onclick="Gantt.save()" id="btn-save">
-            ${state.dirty ? '● Save' : 'Saved'}
-          </button>
+          <span id="btn-save" style="font-size:12px;color:#80868b;min-width:60px;text-align:right;">Saved ✓</span>
         </div>
 
         <!-- Main split -->
@@ -585,16 +583,16 @@ const Gantt = (() => {
 
   // ── Save ─────────────────────────────────────────────────────
   async function save() {
-    const btn = document.getElementById('btn-save');
-    if (btn) { btn.disabled=true; btn.textContent='Saving…'; }
+    clearTimeout(_saveTimer);
+    const ind = document.getElementById('btn-save');
+    if (ind) { ind.textContent = 'Saving…'; ind.style.color = '#80868b'; }
     try {
       await DB.bulkUpdateTasks(state.tasks);
       state.dirty = false;
-      if (btn) btn.textContent = 'Saved';
-      toast('Project saved ✓', 'success');
+      if (ind) { ind.textContent = 'Saved ✓'; ind.style.color = '#1e8e3e'; }
     } catch(e) {
       toast('Save failed: '+e.message, 'error');
-      if (btn) { btn.disabled=false; btn.textContent='● Save'; }
+      if (ind) { ind.textContent = 'Save failed'; ind.style.color = '#b91c1c'; }
     }
   }
 
@@ -769,10 +767,23 @@ const Gantt = (() => {
     tls.scrollLeft = Math.max(0, off - tls.clientWidth/2);
   }
 
+  let _saveTimer = null;
   function markDirty() {
     state.dirty = true;
-    const btn = document.getElementById('btn-save');
-    if (btn) { btn.disabled=false; btn.textContent='● Save'; }
+    const ind = document.getElementById('btn-save');
+    if (ind) { ind.textContent = 'Saving…'; ind.style.color = '#80868b'; }
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(async () => {
+      try {
+        await DB.bulkUpdateTasks(state.tasks);
+        state.dirty = false;
+        const ind2 = document.getElementById('btn-save');
+        if (ind2) { ind2.textContent = 'Saved ✓'; ind2.style.color = '#1e8e3e'; }
+      } catch(e) {
+        const ind2 = document.getElementById('btn-save');
+        if (ind2) { ind2.textContent = 'Save failed'; ind2.style.color = '#b91c1c'; }
+      }
+    }, 1500);
   }
 
   function updateStatus() {
