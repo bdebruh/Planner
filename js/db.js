@@ -63,7 +63,25 @@ const DB = (() => {
   }
 
   async function upsertTask(task) {
-    const { dependencies, ...taskData } = task;
+    const { dependencies } = task;
+    // Only send known DB columns — extra UI fields must not reach Supabase
+    const taskData = {
+      id:           task.id,
+      project_id:   task.project_id,
+      parent_id:    task.parent_id   || null,
+      name:         task.name,
+      start_date:   task.start_date,
+      end_date:     task.end_date,
+      duration:     task.duration    || 1,
+      progress:     task.progress    || 0,
+      is_milestone: task.is_milestone || false,
+      collapsed:    task.collapsed   || false,
+      sort_order:   task.sort_order  || 0,
+      notes:        task.notes       || '',
+    };
+    // Include color only if column exists (added via ALTER TABLE)
+    if (task.color !== undefined) taskData.color = task.color || null;
+
     const { data, error } = await client
       .from('tasks')
       .upsert(taskData, { onConflict: 'id' })

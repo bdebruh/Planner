@@ -275,11 +275,12 @@ const Gantt = (() => {
       row.dataset.id = t.id;
 
       if (t.is_milestone) {
-        const off  = D.diff(start, D.parse(t.end_date));  // milestones use end_date only
-        const wrap = document.createElement('div');
+        const off   = D.diff(start, D.parse(t.end_date));
+        const mColor = getTaskColor(t);
+        const wrap  = document.createElement('div');
         wrap.className = 'milestone-wrap';
         wrap.style.left = `${off*ppd+ppd/2-8}px`;
-        wrap.innerHTML  = `<div class="milestone-diamond${t.id===state.selectedId?' selected':''}"></div>`;
+        wrap.innerHTML  = `<div class="milestone-diamond${t.id===state.selectedId?' selected':''}" style="background:${mColor};box-shadow:0 1px 4px ${mColor}66;"></div>`;
         wrap.addEventListener('click', e => { e.stopPropagation(); selectTask(t.id); });
         wrap.addEventListener('contextmenu', e => { e.preventDefault(); selectTask(t.id); showCtx(e.clientX, e.clientY, t.id); });
         row.appendChild(wrap);
