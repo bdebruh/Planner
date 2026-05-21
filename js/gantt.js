@@ -169,11 +169,10 @@ const Gantt = (() => {
 
     renderTasks();
     renderTimeline(start, total, ppd);
-    renderBars(start, ppd, vis);
-    renderPhases(start, total, ppd);
+    renderPhases(start, total, ppd);  // phases first = behind bars
+    renderBars(start, ppd, vis);      // bars on top
     renderDeps(start, ppd, vis);
     renderTodayMarker(start, ppd);
-    renderPopLines(start, total, ppd);
     syncScroll();
     setupPanelResize();
     setupKeyboard();
@@ -383,38 +382,50 @@ const Gantt = (() => {
     }
   }
 
-  // ── Phase bands — vertical columns behind bars in the body ────
+  // ── Phases / Periods of Performance — behind bars ─────────────
   function renderPhases(start, total, ppd) {
     const body = document.getElementById('tlb');
     if (!body) return;
-    body.querySelectorAll('.phase-band').forEach(e => e.remove());
+    body.querySelectorAll('.phase-band, .pop-shade, .pop-line, .pop-day-shade').forEach(e => e.remove());
+
+    const phases = state.phases || [];
+    if (!phases.length) return;
 
     const bodyH = Math.max(visible(state.tasks).length * ROW_H + 60, 200);
 
-    (state.phases || []).forEach(ph => {
+    phases.forEach(ph => {
       const x = Math.max(0, D.diff(start, D.parse(ph.start_date))) * ppd;
       const w = (Math.min(total, D.diff(start, D.parse(ph.end_date)) + 1) * ppd) - x;
       if (w <= 0) return;
 
+      // Band — sits behind bars (rendered before bars in DOM)
       const band = document.createElement('div');
       band.className = 'phase-band';
-      band.style.cssText = `position:absolute;left:${x}px;width:${w}px;top:0;
-        height:${bodyH}px;background:${ph.color}12;
-        border-left:2px solid ${ph.color}88;border-right:1px solid ${ph.color}33;
-        pointer-events:none;z-index:0;box-sizing:border-box;`;
+      band.style.cssText = `
+        position:absolute; left:${x}px; width:${w}px; top:0; height:${bodyH}px;
+        background:${ph.color}20;
+        border-left:3px solid ${ph.color};
+        border-right:1px solid ${ph.color}55;
+        pointer-events:none; box-sizing:border-box;`;
 
-      // Phase name label pinned to top of the band
+      // Name label
       const lbl = document.createElement('div');
-      lbl.style.cssText = `position:absolute;top:4px;left:6px;right:6px;
-        padding:2px 8px;border-radius:999px;background:${ph.color};
-        color:#fff;font-size:10px;font-weight:700;letter-spacing:.05em;
-        text-transform:uppercase;white-space:nowrap;overflow:hidden;
-        text-overflow:ellipsis;display:inline-block;max-width:calc(100% - 12px);`;
+      lbl.style.cssText = `
+        position:absolute; top:5px; left:7px;
+        padding:2px 9px; border-radius:4px;
+        background:${ph.color}; color:#fff;
+        font-size:10px; font-weight:700; letter-spacing:.05em;
+        text-transform:uppercase; white-space:nowrap;
+        overflow:hidden; text-overflow:ellipsis;
+        max-width:calc(100% - 14px);`;
       lbl.textContent = ph.name;
       band.appendChild(lbl);
       body.appendChild(band);
     });
   }
+
+  // renderPopLines no longer needed — phases ARE the PoPs
+  function renderPopLines() {}
 
   // ── Period-of-performance shading ────────────────────────────
   function renderPopLines(start, total, ppd) {
@@ -916,32 +927,19 @@ const Gantt = (() => {
     backdrop.innerHTML = `
       <div class="modal" style="max-width:560px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
         <div class="modal-header">
-          <span class="modal-title">Phases &amp; Period of Performance</span>
+          <span class="modal-title">Periods of Performance</span>
           <button class="modal-close" onclick="document.getElementById('phases-backdrop').remove()">✕</button>
         </div>
         <div class="modal-body" style="overflow-y:auto;flex:1;">
-
-          <!-- Period of performance -->
-          <div style="margin-bottom:20px;">
-            <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#80868b;margin-bottom:10px;">Period of Performance</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <div>
-                <label style="font-size:12.5px;font-weight:500;color:#5f6368;display:block;margin-bottom:4px;">Project Start</label>
-                <input type="date" id="pop-start" class="input" value="${state.project?.start_date||''}">
-              </div>
-              <div>
-                <label style="font-size:12.5px;font-weight:500;color:#5f6368;display:block;margin-bottom:4px;">Project End</label>
-                <input type="date" id="pop-end" class="input" value="${state.project?.end_date||''}">
-              </div>
-            </div>
-            <button class="btn btn-primary" style="margin-top:10px;" onclick="Gantt.savePopDates()">Save Dates</button>
-          </div>
-
-          <div style="border-top:1px solid #f1f3f4;padding-top:18px;margin-bottom:12px;">
-            <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#80868b;margin-bottom:10px;">Phase Bands</div>
-            <div id="phases-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
-            <button class="btn btn-ghost" onclick="Gantt.addPhaseRow()">+ Add Phase</button>
-          </div>
+          <p style="font-size:13px;color:#5f6368;margin-bottom:16px;line-height:1.6;">
+            Each period appears as a colored band on the Gantt behind the task bars. Add as many as you need.
+          </p>
+          <div id="phases-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+          <button class="btn btn-ghost" onclick="Gantt.addPhaseRow()">+ Add Period</button>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="document.getElementById('phases-backdrop').remove()">Cancel</button>
+          <button class="btn btn-primary" onclick="Gantt.savePhasesFromModal()">Save</button>
         </div>
       </div>`;
     document.body.appendChild(backdrop);
