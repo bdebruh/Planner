@@ -146,11 +146,55 @@ const DB = (() => {
     if (error) throw error;
   }
 
+  // ── Share tokens ──────────────────────────────────────────────
+  async function createShareToken(projectId, role = 'editor') {
+    const user = (await client.auth.getUser()).data.user;
+    const { data, error } = await client
+      .from('share_tokens')
+      .insert({ project_id: projectId, role, created_by: user.id })
+      .select().single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function getShareTokens(projectId) {
+    const { data, error } = await client
+      .from('share_tokens')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data;
+  }
+
+  async function redeemShareToken(tokenId) {
+    // 1. Look up the token
+    const { data: token, error: te } = await client
+      .from('share_tokens').select('*').eq('id', tokenId).single();
+    if (te || !token) throw new Error('Invite link is invalid or expired.');
+    if (new Date(token.expires_at) < new Date()) throw new Error('This invite link has expired.');
+
+    // 2. Add current user to project_access
+    const user = (await client.auth.getUser()).data.user;
+    const { error: ae } = await client
+      .from('project_access')
+      .upsert({ project_id: token.project_id, user_id: user.id, role: token.role },
+               { onConflict: 'project_id,user_id' });
+    if (ae) throw ae;
+    return token;
+  }
+
+  async function deleteShareToken(id) {
+    const { error } = await client.from('share_tokens').delete().eq('id', id);
+    if (error) throw error;
+  }
+
   return {
     client,
     getProjects, createProject, updateProject, deleteProject,
     getTasks, upsertTask, deleteTask, bulkUpdateTasks,
     getGrants, createGrant, updateGrant,
     getExpenses, createExpense, updateExpense, deleteExpense,
+    createShareToken, getShareTokens, redeemShareToken, deleteShareToken,
   };
 })();

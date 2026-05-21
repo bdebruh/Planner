@@ -45,8 +45,30 @@
 
     async function init() {
       const { data: { session } } = await DB.client.auth.getSession();
-      if (!session) { window.location.href = 'index.html'; return; }
+      if (!session) {
+        // Preserve join token through login
+        const join = new URLSearchParams(window.location.search).get('join');
+        if (join) localStorage.setItem('pending_join', join);
+        window.location.href = 'index.html'; return;
+      }
       currentUser = session.user;
+
+      // Handle pending invite link
+      const pendingJoin = localStorage.getItem('pending_join')
+        || new URLSearchParams(window.location.search).get('join');
+      if (pendingJoin) {
+        localStorage.removeItem('pending_join');
+        try {
+          const token = await DB.redeemShareToken(pendingJoin);
+          toast(`You now have access to this project!`, 'success');
+          // Remove ?join= from URL cleanly
+          history.replaceState({}, '', window.location.pathname);
+          await new Promise(r => setTimeout(r, 800));
+          currentProjectId = token.project_id;
+        } catch(e) {
+          toast(e.message, 'error');
+        }
+      }
 
       const meta = session.user.user_metadata;
       const name = meta.full_name || meta.user_name || 'User';
