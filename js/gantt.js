@@ -51,7 +51,7 @@ const Gantt = (() => {
 
   // ── Main render ───────────────────────────────────────────────
   async function render(container, projectId) {
-    if (!projectId) { container.innerHTML = '<div class="page"><p style="padding:60px;text-align:center;color:#80868b;">Select a project from the sidebar to open its Gantt chart.</p></div>'; return; }
+    if (!projectId) { container.innerHTML = '<div class="page"><p style="padding:60px;text-align:center;color:#80868b;">Select a project to open its Gantt chart.</p></div>'; return; }
     state.projectId = projectId;
     container.innerHTML = '<div style="padding:60px;text-align:center;color:#80868b;">Loading…</div>';
 
@@ -139,7 +139,7 @@ const Gantt = (() => {
               </div>
             </div>
             <!-- Detail panel -->
-            <div id="detailPanel" style="display:none;position:absolute;right:0;top:56px;bottom:28px;width:300px;background:#fff;border-left:1px solid rgba(15,45,107,.10);overflow-y:auto;box-shadow:-4px 0 16px rgba(15,45,107,.08);z-index:40;"></div>
+            <div id="detailPanel" style="display:none;position:absolute;right:0;top:0;bottom:0;width:320px;background:#fff;border-left:1px solid rgba(15,45,107,.10);overflow-y:auto;box-shadow:-4px 0 16px rgba(15,45,107,.08);z-index:40;"></div>
           </div>
         </div>
 
@@ -344,20 +344,6 @@ const Gantt = (() => {
         svg.appendChild(path);
       });
     });
-  }
-
-  function renderTodayMarker(start, ppd) {
-    const body  = document.getElementById('tlb');
-    body.querySelectorAll('.today-line').forEach(e=>e.remove());
-    const today = new Date();
-    const off   = D.diff(start, today);
-    if (off>=0) {
-      const line = document.createElement('div');
-      line.className = 'today-line';
-      line.style.left = `${off*ppd+ppd/2}px`;
-      line.innerHTML  = '<span class="today-lbl">Today</span>';
-      body.appendChild(line);
-    }
   }
 
   function renderTodayMarker(start, ppd) {
