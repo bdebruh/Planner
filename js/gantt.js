@@ -314,6 +314,7 @@ const Gantt = (() => {
           startDrag(t, 'move', e.clientX, ppd, start);
         });
         barEl.addEventListener('click', e => e.stopPropagation());
+        barEl.addEventListener('dblclick', e => { e.stopPropagation(); openDetail(t.id); });
         barEl.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); selectTask(t.id); showCtx(e.clientX, e.clientY, t.id); });
         row.appendChild(barEl);
       }
