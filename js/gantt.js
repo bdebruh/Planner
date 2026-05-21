@@ -121,14 +121,16 @@ const Gantt = (() => {
         <div class="gantt-main" id="gm">
           <!-- Left: task list -->
           <div class="gantt-left" id="gl" style="width:${state.panelWidth}px">
-            <div class="phase-spacer" style="height:30px;background:#f8f9fa;border-bottom:2px solid rgba(15,45,107,.10);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:#80868b;text-transform:uppercase;letter-spacing:.06em;">Phases</div>
-            <div class="task-header">
-              <div style="text-align:center">#</div>
-              <div>Task Name</div>
-              <div style="text-align:right;padding-right:4px">Dur</div>
-              <div style="text-align:right;padding-right:4px">Start</div>
-              <div style="text-align:right;padding-right:4px">End</div>
-              <div style="text-align:right;padding-right:4px">%</div>
+            <div class="task-header" style="height:78px;display:flex;flex-direction:column;padding:0;">
+              <div style="height:30px;background:#f8f9fa;border-bottom:2px solid rgba(15,45,107,.10);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:#80868b;text-transform:uppercase;letter-spacing:.06em;flex-shrink:0;">Phases</div>
+              <div style="flex:1;display:grid;grid-template-columns:28px 1fr 52px 72px 72px 44px;align-items:center;padding:0 8px;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em;">
+                <div style="text-align:center">#</div>
+                <div>Task Name</div>
+                <div style="text-align:right;padding-right:4px">Dur</div>
+                <div style="text-align:right;padding-right:4px">Start</div>
+                <div style="text-align:right;padding-right:4px">End</div>
+                <div style="text-align:right;padding-right:4px">%</div>
+              </div>
             </div>
             <div class="task-body" id="tb"></div>
             <div class="panel-resizer" id="pr"></div>
@@ -141,7 +143,7 @@ const Gantt = (() => {
                 <div class="tl-header" id="tlh" style="width:${totalW}px">
                   <div id="tlp" style="position:relative;height:30px;background:#f8f9fa;border-bottom:2px solid rgba(15,45,107,.10);overflow:hidden;"></div>
                   <div class="tl-months" id="tlm" style="position:relative;height:24px;border-bottom:1px solid #f1f3f4;"></div>
-                  <div class="tl-days"   id="tld" style="position:relative;height:24px;"></div>
+                  <div class="tl-days"   id="tld" style="position:relative;height:24px;border-bottom:2px solid rgba(15,45,107,.08);"></div>
                 </div>
                 <div class="tl-body" id="tlb" style="position:relative;flex:1;min-height:${vis.length*ROW_H+60}px;overflow-y:auto;">
                   <svg class="dep-svg" id="dsvg" style="position:absolute;inset:0;width:${totalW}px;height:${vis.length*ROW_H+60}px;">
@@ -275,7 +277,7 @@ const Gantt = (() => {
       row.dataset.id = t.id;
 
       if (t.is_milestone) {
-        const off  = D.diff(start, D.parse(t.start_date));
+        const off  = D.diff(start, D.parse(t.end_date));  // milestones use end_date only
         const wrap = document.createElement('div');
         wrap.className = 'milestone-wrap';
         wrap.style.left = `${off*ppd+ppd/2-8}px`;
@@ -458,8 +460,8 @@ const Gantt = (() => {
     if (days===0) return;
     const t = drag.task;
     if (drag.side==='move') {
-      t.start_date = D.fmt(D.add(D.parse(drag.orig.s), days));
       t.end_date   = D.fmt(D.add(D.parse(drag.orig.e), days));
+      t.start_date = t.is_milestone ? t.end_date : D.fmt(D.add(D.parse(drag.orig.s), days));
     } else if (drag.side==='right') {
       const ne = D.add(D.parse(drag.orig.e), days);
       if (ne > D.parse(t.start_date)) t.end_date = D.fmt(ne);
@@ -701,16 +703,36 @@ const Gantt = (() => {
   function applyDetail(id) {
     const task = state.tasks.find(t=>t.id===id);
     if (!task) return;
-    task.name       = document.getElementById('det-name')?.value.trim() || task.name;
-    task.start_date = document.getElementById('det-start')?.value || task.start_date;
-    task.end_date   = document.getElementById('det-end')?.value   || task.end_date;
-    task.progress   = parseInt(document.getElementById('det-prog')?.value||0);
-    task.notes      = document.getElementById('det-notes')?.value || '';
-    task.duration   = D.diff(D.parse(task.start_date), D.parse(task.end_date)) + 1;
+    task.name     = document.getElementById('det-name')?.value.trim() || task.name;
+    task.end_date = document.getElementById('det-end')?.value || task.end_date;
+    task.notes    = document.getElementById('det-notes')?.value || '';
+    if (task.is_milestone) {
+      task.start_date = task.end_date; // milestone = single date
+    } else {
+      task.start_date = document.getElementById('det-start')?.value || task.start_date;
+      task.progress   = parseInt(document.getElementById('det-prog')?.value || 0);
+    }
+    task.duration = D.diff(D.parse(task.start_date), D.parse(task.end_date)) + 1;
+    rollupProgress(task.parent_id);
     markDirty();
     const c = document.getElementById('gp')?.parentElement;
     if (c) renderGantt(c);
-    toast('Changes applied', 'success');
+  }
+
+  // ── Roll up progress from leaf tasks to parents ───────────────
+  function rollupProgress(parentId) {
+    if (!parentId) return;
+    const parent = state.tasks.find(t => t.id === parentId);
+    if (!parent) return;
+    const children = state.tasks.filter(t => t.parent_id === parentId && !t.is_milestone);
+    if (children.length) {
+      // Duration-weighted average
+      const totalDur = children.reduce((s, t) => s + Math.max(1, t.duration || 1), 0);
+      parent.progress = Math.round(
+        children.reduce((s, t) => s + (t.progress || 0) * Math.max(1, t.duration || 1), 0) / totalDur
+      );
+      rollupProgress(parent.parent_id); // recurse up the tree
+    }
   }
 
   function toggleDep(taskId, depId, checked) {
