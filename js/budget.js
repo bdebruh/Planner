@@ -102,26 +102,29 @@ const Budget = (() => {
       </div>`;
   }
 
-  // ── Budget detail (ledger) ────────────────────────────────────
+  // ── Budget detail — Budget vs Actual ─────────────────────────
   function renderDetail() {
-    const b       = _activeBudget;
+    const b    = _activeBudget;
+    const cats = b.budget_categories || [];
+
+    // Group expenses by category_id
+    const expByCat = {};
+    _transactions.filter(t => t.transaction_type !== 'income').forEach(t => {
+      const key = t.category_id || '__none';
+      if (!expByCat[key]) expByCat[key] = [];
+      expByCat[key].push(t);
+    });
     const income  = _transactions.filter(t => t.transaction_type === 'income').reduce((s,t) => s+Number(t.amount||0), 0);
-    const expense = _transactions.filter(t => t.transaction_type !== 'income').reduce((s,t) => s+Number(t.amount||0), 0);
-    const alloc   = Number(b.total_budget||0);
-    const balance = alloc - expense + income;
-    const pctUsed = alloc > 0 ? Math.min(100, (expense/alloc)*100) : 0;
 
-    // Sort by date
-    const sorted = [..._transactions].sort((a,z) => a.expense_date.localeCompare(z.expense_date));
+    // Totals
+    const totalBudgeted = cats.reduce((s,c) => s+Number(c.budgeted||0), 0) || Number(b.total_budget||0);
+    const totalActual   = _transactions.filter(t => t.transaction_type !== 'income').reduce((s,t) => s+Number(t.amount||0), 0);
+    const totalBalance  = totalBudgeted - totalActual + income;
+    const pctUsed       = totalBudgeted > 0 ? Math.min(100,(totalActual/totalBudgeted)*100) : 0;
 
-    // Running balance
-    let running = alloc;
-    const rows = sorted.map(t => {
-      const isIncome = t.transaction_type === 'income';
-      if (isIncome) running += Number(t.amount||0);
-      else running -= Number(t.amount||0);
-      return { ...t, _running: running };
-    }).reverse(); // show newest first
+    // All category keys to show (defined categories + any uncategorized expenses)
+    const catIds = new Set([...cats.map(c=>c.id), ...Object.keys(expByCat)]);
+    const alloc  = Number(b.total_budget||0);
 
     _container.innerHTML = `
       <div class="bud-page">
@@ -134,109 +137,192 @@ const Budget = (() => {
               <h1 class="bud-title">${esc(b.name)}</h1>
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
                 <span class="bud-tag">${esc(b.grant_code)}</span>
-                ${b.funding_agency ? `<span style="font-size:12.5px;color:#80868b;">${esc(b.funding_agency)}</span>` : ''}
-                ${b._projectName ? `<button onclick="openProject('${b.project_id}')" style="background:none;border:none;cursor:pointer;font-size:12.5px;color:#1a5aa8;padding:0;font-family:inherit;">→ Open project: ${esc(b._projectName)}</button>` : ''}
+                ${b.funding_agency?`<span style="font-size:12.5px;color:#80868b;">${esc(b.funding_agency)}</span>`:''}
+                ${b._projectName?`<button onclick="openProject('${b.project_id}')" style="background:none;border:none;cursor:pointer;font-size:12.5px;color:#1a5aa8;padding:0;font-family:inherit;">→ ${esc(b._projectName)}</button>`:''}
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-shrink:0;">
-              <button class="bud-btn-outline" onclick="Budget._openBudgetModal('${b.id}')">Edit</button>
-              <button class="bud-btn-primary" onclick="Budget._openTxModal()">+ Add Transaction</button>
+              <button class="bud-btn-outline" onclick="Budget._openBudgetModal('${b.id}')">Edit Budget</button>
+              <button class="bud-btn-outline" onclick="Budget._openCategoryModal('${b.id}')">+ Budget Line</button>
+              <button class="bud-btn-primary" onclick="Budget._openTxModal()">+ Transaction</button>
             </div>
           </div>
         </div>
 
         <!-- Summary cards -->
-        <div class="bud-summary-row">
+        <div class="bud-summary-row" style="margin-bottom:20px;">
           <div class="bud-stat-card">
-            <div class="bud-stat-label">Allocated</div>
-            <div class="bud-stat-value">${fmt(alloc)}</div>
-            <div class="bud-stat-sub">Total budget</div>
+            <div class="bud-stat-label">Total Budgeted</div>
+            <div class="bud-stat-value">${fmt(totalBudgeted)}</div>
+            <div class="bud-stat-sub">${cats.length} line item${cats.length!==1?'s':''}</div>
           </div>
           <div class="bud-stat-card">
-            <div class="bud-stat-label">Total Spent</div>
-            <div class="bud-stat-value" style="color:#ef4444;">${fmt(expense)}</div>
+            <div class="bud-stat-label">Actual Spent</div>
+            <div class="bud-stat-value" style="color:${totalActual>totalBudgeted?'#b91c1c':'#ef4444'};">${fmt(totalActual)}</div>
             <div class="bud-stat-sub">${pctUsed.toFixed(1)}% of budget</div>
           </div>
           <div class="bud-stat-card">
-            <div class="bud-stat-label">Income Received</div>
+            <div class="bud-stat-label">Credits / Income</div>
             <div class="bud-stat-value" style="color:#1e8e3e;">${fmt(income)}</div>
             <div class="bud-stat-sub">${_transactions.filter(t=>t.transaction_type==='income').length} payment${_transactions.filter(t=>t.transaction_type==='income').length!==1?'s':''}</div>
           </div>
           <div class="bud-stat-card bud-stat-featured">
-            <div class="bud-stat-label">Balance</div>
-            <div class="bud-stat-value" style="color:${balance<0?'#b91c1c':'#0f2d6b'};">${fmt(balance)}</div>
-            <div class="bud-stat-sub">${balance<0?'Over budget':'Remaining'}</div>
+            <div class="bud-stat-label">Remaining</div>
+            <div class="bud-stat-value" style="color:${totalBalance<0?'#b91c1c':'#1e8e3e'};">${fmt(totalBalance)}</div>
+            <div class="bud-stat-sub">${totalBalance<0?'Over budget':'Available'}</div>
           </div>
         </div>
 
         <!-- Progress bar -->
-        <div style="background:#fff;border:1px solid rgba(15,45,107,.10);border-radius:12px;padding:18px 22px;margin-bottom:20px;">
+        <div style="background:#fff;border:1px solid rgba(15,45,107,.10);border-radius:12px;padding:16px 20px;margin-bottom:20px;">
           <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="font-size:13px;font-weight:600;color:#0f2d6b;">Budget Utilization</span>
-            <span style="font-size:13px;color:#5f6368;">${fmt(expense)} spent of ${fmt(alloc)}</span>
+            <span style="font-size:13px;font-weight:600;color:#0f2d6b;">Overall Utilization</span>
+            <span style="font-size:13px;color:#5f6368;">${fmt(totalActual)} of ${fmt(totalBudgeted)}</span>
           </div>
-          <div class="bud-progress-bar" style="height:12px;">
+          <div class="bud-progress-bar" style="height:10px;">
             <div style="width:${pctUsed}%;background:${pctUsed>90?'#ef4444':pctUsed>75?'#f59e0b':'#1a5aa8'};"></div>
           </div>
         </div>
 
-        <!-- Transaction ledger -->
-        <div style="background:#fff;border:1px solid rgba(15,45,107,.10);border-radius:12px;overflow:hidden;">
-          <div style="padding:16px 20px;border-bottom:1px solid #f1f3f4;display:flex;align-items:center;justify-content:space-between;">
-            <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#80868b;">Transactions</span>
-            <span style="font-size:12.5px;color:#80868b;">${_transactions.length} record${_transactions.length!==1?'s':''}</span>
+        <!-- Budget vs Actual table -->
+        <div style="background:#fff;border:1px solid rgba(15,45,107,.10);border-radius:12px;overflow:hidden;margin-bottom:20px;">
+          <div style="padding:14px 20px;border-bottom:1px solid #f1f3f4;display:grid;grid-template-columns:1fr 120px 120px 120px 80px;gap:8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#80868b;">
+            <div>Line Item</div>
+            <div style="text-align:right;">Budgeted</div>
+            <div style="text-align:right;">Actual</div>
+            <div style="text-align:right;">Remaining</div>
+            <div></div>
           </div>
 
-          ${rows.length === 0 ? `
-            <div style="padding:48px;text-align:center;color:#80868b;font-size:13.5px;">
-              No transactions yet.
-              <div style="margin-top:10px;"><button onclick="Budget._openTxModal()" style="color:#1a5aa8;background:none;border:none;cursor:pointer;font-size:13.5px;">Add your first transaction →</button></div>
-            </div>` : `
-          <table class="bud-ledger">
-            <thead><tr>
-              <th>Date</th>
-              <th>Description</th>
-              <th>Category</th>
-              <th style="text-align:right">Debit</th>
-              <th style="text-align:right">Credit</th>
-              <th style="text-align:right">Balance</th>
-              <th></th>
-            </tr></thead>
-            <tbody>
-              ${rows.map(t => {
-                const isInc = t.transaction_type === 'income';
-                return `<tr>
-                  <td style="white-space:nowrap;color:#80868b;">${fmtDate(t.expense_date)}</td>
-                  <td>
-                    <div style="font-weight:500;color:#0f2d6b;">${esc(t.description)}</div>
-                    ${t.vendor ? `<div style="font-size:11.5px;color:#80868b;">${esc(t.vendor)}</div>` : ''}
-                    ${t.is_irb_related ? '<span class="bud-irb-badge">IRB</span>' : ''}
-                    ${t.receipt_url ? `<a href="${esc(t.receipt_url)}" target="_blank" style="font-size:11.5px;color:#1a5aa8;margin-left:4px;">Receipt ↗</a>` : ''}
-                  </td>
-                  <td style="color:#5f6368;">${esc(t.budget_period||'')}</td>
-                  <td style="text-align:right;font-variant-numeric:tabular-nums;color:#ef4444;font-weight:500;">
-                    ${!isInc ? fmt(t.amount) : ''}
-                  </td>
-                  <td style="text-align:right;font-variant-numeric:tabular-nums;color:#1e8e3e;font-weight:500;">
-                    ${isInc ? fmt(t.amount) : ''}
-                  </td>
-                  <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:${t._running<0?'#b91c1c':'#0f2d6b'};">
-                    ${fmt(t._running)}
-                  </td>
-                  <td style="text-align:right;white-space:nowrap;">
-                    <button class="bud-row-btn" onclick="Budget._openTxModal('${t.id}')">Edit</button>
-                    <button class="bud-row-btn danger" onclick="Budget._deleteTx('${t.id}')">Del</button>
-                  </td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>`}
+          ${cats.length === 0 && !expByCat['__none'] ? `
+            <div style="padding:36px;text-align:center;color:#80868b;font-size:13.5px;">
+              No budget line items yet.
+              <div style="margin-top:8px;"><button onclick="Budget._openCategoryModal('${b.id}')" style="color:#1a5aa8;background:none;border:none;cursor:pointer;font-size:13.5px;">+ Add a budget line →</button></div>
+            </div>` : ''}
+
+          ${cats.map(cat => {
+            const txs     = expByCat[cat.id] || [];
+            const actual  = txs.reduce((s,t) => s+Number(t.amount||0), 0);
+            const budgeted = Number(cat.budgeted||0);
+            const rem     = budgeted - actual;
+            const pct     = budgeted > 0 ? Math.min(100,(actual/budgeted)*100) : 0;
+            const over    = rem < 0;
+            return `
+              <div class="bud-line-item" id="cat-${cat.id}">
+                <!-- Category header row -->
+                <div onclick="Budget._toggleCat('${cat.id}')" style="display:grid;grid-template-columns:1fr 120px 120px 120px 80px;gap:8px;padding:13px 20px;cursor:pointer;border-bottom:1px solid #f9f9f9;align-items:center;transition:background .1s;" onmouseover="this.style.background='#f8f9ff'" onmouseout="this.style.background=''">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span id="cat-tog-${cat.id}" style="font-size:10px;color:#80868b;transition:transform .15s;">▶</span>
+                    <div>
+                      <div style="font-size:13.5px;font-weight:600;color:#0f2d6b;">${esc(cat.name)}</div>
+                      <div style="font-size:11.5px;color:#80868b;">${esc(cat.period||'')} · ${txs.length} transaction${txs.length!==1?'s':''}</div>
+                    </div>
+                  </div>
+                  <div style="text-align:right;font-size:13.5px;font-variant-numeric:tabular-nums;color:#5f6368;">${fmt(budgeted)}</div>
+                  <div style="text-align:right;font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums;color:${over?'#b91c1c':'#0f2d6b'};">${fmt(actual)}</div>
+                  <div style="text-align:right;font-size:13.5px;font-variant-numeric:tabular-nums;color:${over?'#b91c1c':'#1e8e3e'};font-weight:500;">${fmt(rem)}</div>
+                  <div style="text-align:right;">
+                    <button onclick="event.stopPropagation();Budget._openTxModal(null,'${cat.id}')" class="bud-row-btn">+ Add</button>
+                  </div>
+                </div>
+                <!-- Mini progress bar -->
+                <div style="height:3px;background:#f1f3f4;margin:0 20px;">
+                  <div style="height:100%;width:${pct}%;background:${pct>90?'#ef4444':pct>75?'#f59e0b':'#1a5aa8'};border-radius:999px;transition:width .3s;"></div>
+                </div>
+                <!-- Transaction sub-rows (hidden by default) -->
+                <div id="cat-rows-${cat.id}" style="display:none;">
+                  ${txs.length === 0 ? `<div style="padding:12px 20px 12px 52px;font-size:13px;color:#80868b;font-style:italic;">No transactions yet — <button onclick="Budget._openTxModal(null,'${cat.id}')" style="color:#1a5aa8;background:none;border:none;cursor:pointer;font-size:13px;padding:0;font-family:inherit;">add one</button></div>` :
+                    txs.sort((a,z)=>z.expense_date.localeCompare(a.expense_date)).map(t => `
+                      <div style="display:grid;grid-template-columns:100px 1fr 100px 100px;gap:8px;padding:9px 20px 9px 52px;border-top:1px solid #f9f9f9;align-items:center;font-size:13px;">
+                        <div style="color:#80868b;white-space:nowrap;">${fmtDate(t.expense_date)}</div>
+                        <div>
+                          <span style="color:#0f2d6b;">${esc(t.description)}</span>
+                          ${t.vendor?`<span style="color:#b0b0b5;font-size:11.5px;margin-left:6px;">${esc(t.vendor)}</span>`:''}
+                          ${t.is_irb_related?'<span class="bud-irb-badge" style="margin-left:4px;">IRB</span>':''}
+                          ${t.receipt_url?`<a href="${esc(t.receipt_url)}" target="_blank" style="font-size:11.5px;color:#1a5aa8;margin-left:6px;">Receipt ↗</a>`:''}
+                        </div>
+                        <div style="text-align:right;font-variant-numeric:tabular-nums;color:#ef4444;font-weight:500;">${t.transaction_type==='income'?'':fmt(t.amount)}</div>
+                        <div style="text-align:right;white-space:nowrap;">
+                          <button class="bud-row-btn" onclick="Budget._openTxModal('${t.id}')">Edit</button>
+                          <button class="bud-row-btn danger" onclick="Budget._deleteTx('${t.id}')">Del</button>
+                        </div>
+                      </div>`).join('')}
+                </div>
+              </div>`;
+          }).join('')}
+
+          ${expByCat['__none']?.length ? `
+            <div class="bud-line-item" id="cat-__none">
+              <div onclick="Budget._toggleCat('__none')" style="display:grid;grid-template-columns:1fr 120px 120px 120px 80px;gap:8px;padding:13px 20px;cursor:pointer;border-top:1px solid #f1f3f4;align-items:center;" onmouseover="this.style.background='#f8f9ff'" onmouseout="this.style.background=''">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span id="cat-tog-__none" style="font-size:10px;color:#80868b;">▶</span>
+                  <div>
+                    <div style="font-size:13.5px;font-weight:600;color:#80868b;">Uncategorized</div>
+                    <div style="font-size:11.5px;color:#b0b0b5;">${expByCat['__none'].length} transaction${expByCat['__none'].length!==1?'s':''}</div>
+                  </div>
+                </div>
+                <div style="text-align:right;color:#b0b0b5;">—</div>
+                <div style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums;color:#80868b;">${fmt(expByCat['__none'].reduce((s,t)=>s+Number(t.amount||0),0))}</div>
+                <div style="text-align:right;color:#b0b0b5;">—</div>
+                <div></div>
+              </div>
+              <div id="cat-rows-__none" style="display:none;">
+                ${expByCat['__none'].sort((a,z)=>z.expense_date.localeCompare(a.expense_date)).map(t=>`
+                  <div style="display:grid;grid-template-columns:100px 1fr 100px 100px;gap:8px;padding:9px 20px 9px 52px;border-top:1px solid #f9f9f9;font-size:13px;align-items:center;">
+                    <div style="color:#80868b;">${fmtDate(t.expense_date)}</div>
+                    <div style="color:#0f2d6b;">${esc(t.description)}${t.vendor?`<span style="color:#b0b0b5;font-size:11.5px;margin-left:6px;">${esc(t.vendor)}</span>`:''}</div>
+                    <div style="text-align:right;color:#ef4444;font-weight:500;font-variant-numeric:tabular-nums;">${fmt(t.amount)}</div>
+                    <div style="text-align:right;">
+                      <button class="bud-row-btn" onclick="Budget._openTxModal('${t.id}')">Edit</button>
+                      <button class="bud-row-btn danger" onclick="Budget._deleteTx('${t.id}')">Del</button>
+                    </div>
+                  </div>`).join('')}
+              </div>
+            </div>` : ''}
+
+          <!-- Totals footer -->
+          <div style="display:grid;grid-template-columns:1fr 120px 120px 120px 80px;gap:8px;padding:14px 20px;border-top:2px solid #f1f3f4;background:#f8f9ff;font-weight:700;font-size:13.5px;font-variant-numeric:tabular-nums;">
+            <div style="color:#0f2d6b;">Total</div>
+            <div style="text-align:right;color:#5f6368;">${fmt(totalBudgeted)}</div>
+            <div style="text-align:right;color:${totalActual>totalBudgeted?'#b91c1c':'#0f2d6b'};">${fmt(totalActual)}</div>
+            <div style="text-align:right;color:${totalBalance<0?'#b91c1c':'#1e8e3e'};">${fmt(totalBalance)}</div>
+            <div></div>
+          </div>
         </div>
+
+        <!-- Income / Credits section -->
+        ${_transactions.filter(t=>t.transaction_type==='income').length ? `
+        <div style="background:#fff;border:1px solid rgba(15,45,107,.10);border-radius:12px;overflow:hidden;">
+          <div style="padding:14px 20px;border-bottom:1px solid #f1f3f4;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#1e8e3e;">Credits / Income</span>
+            <span style="font-size:12.5px;color:#1e8e3e;font-weight:600;">${fmt(income)}</span>
+          </div>
+          ${_transactions.filter(t=>t.transaction_type==='income').sort((a,z)=>z.expense_date.localeCompare(a.expense_date)).map(t=>`
+            <div style="display:grid;grid-template-columns:100px 1fr 120px 100px;gap:8px;padding:10px 20px;border-bottom:1px solid #f9f9f9;font-size:13px;align-items:center;">
+              <div style="color:#80868b;">${fmtDate(t.expense_date)}</div>
+              <div style="color:#0f2d6b;">${esc(t.description)}${t.vendor?`<span style="color:#b0b0b5;font-size:11.5px;margin-left:6px;">${esc(t.vendor)}</span>`:''}</div>
+              <div style="text-align:right;color:#1e8e3e;font-weight:600;font-variant-numeric:tabular-nums;">${fmt(t.amount)}</div>
+              <div style="text-align:right;">
+                <button class="bud-row-btn" onclick="Budget._openTxModal('${t.id}')">Edit</button>
+                <button class="bud-row-btn danger" onclick="Budget._deleteTx('${t.id}')">Del</button>
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+
       </div>
 
       <div class="bud-overlay" id="budOverlay" style="display:none" onclick="if(event.target===this)Budget._closeModal()"></div>
       <div class="bud-modal" id="budModal" style="display:none"></div>
     `;
+  }
+
+  function _toggleCat(catId) {
+    const rows = document.getElementById('cat-rows-' + catId);
+    const tog  = document.getElementById('cat-tog-' + catId);
+    if (!rows) return;
+    const open = rows.style.display === '';
+    rows.style.display = open ? 'none' : '';
+    if (tog) tog.style.transform = open ? '' : 'rotate(90deg)';
   }
 
   // ── Budget modal (create/edit budget) ─────────────────────────
@@ -360,7 +446,7 @@ const Budget = (() => {
   }
 
   // ── Transaction modal ─────────────────────────────────────────
-  function _openTxModal(txId) {
+  function _openTxModal(txId, preCatId) {
     const tx    = txId ? _transactions.find(t => t.id === txId) : null;
     const isNew = !tx;
     const categories = ['Personnel','Fringe Benefits','Equipment','Travel','Participant Support','Materials & Supplies','Consultants','Indirect/F&A','Other Direct Costs'];
@@ -403,10 +489,12 @@ const Budget = (() => {
             <input type="text" id="tf-vendor" class="bud-input" placeholder="e.g. Amazon, NSF Award" value="${esc(tx?.vendor||'')}">
           </div>
           <div class="bud-field">
-            <label>Category</label>
+            <label>Budget Line Item</label>
             <select id="tf-cat" class="bud-input">
-              <option value="">— Select —</option>
-              ${categories.map(c => `<option value="${c}" ${tx?.budget_period===c?'selected':''}>${c}</option>`).join('')}
+              <option value="">— Uncategorized —</option>
+              ${(_activeBudget?.budget_categories||[]).map(c =>
+                `<option value="${c.id}" ${(tx?.category_id===c.id||(preCatId&&preCatId===c.id&&!tx))?'selected':''}>${esc(c.name)} (${esc(c.period||'')})</option>`
+              ).join('')}
             </select>
           </div>
           <div class="bud-field">
@@ -462,7 +550,7 @@ const Budget = (() => {
       vendor:           vendor,
       amount:           parseFloat(amount),
       expense_date:     date,
-      budget_period:    cat,
+      category_id:      cat || null,
       receipt_url:      receipt,
       notes:            notes,
       is_irb_related:   isIrb,
@@ -649,14 +737,11 @@ const Budget = (() => {
 
   return {
     render,
-    _openBudget,
-    _backToList,
-    _openBudgetModal,
-    _saveBudget,
-    _openTxModal,
-    _setTxType,
-    _saveTx,
-    _deleteTx,
+    _openBudget, _backToList,
+    _openBudgetModal, _saveBudget,
+    _openTxModal, _setTxType, _saveTx, _deleteTx,
+    _toggleCat,
+    _openCategoryModal, _saveCategory,
     _closeModal,
   };
 })();
