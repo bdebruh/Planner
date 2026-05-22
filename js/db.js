@@ -79,8 +79,8 @@ const DB = (() => {
       sort_order:   task.sort_order  || 0,
       notes:        task.notes       || '',
     };
-    // Include color only if column exists (added via ALTER TABLE)
-    if (task.color !== undefined) taskData.color = task.color || null;
+    if (task.color    !== undefined) taskData.color    = task.color    || null;
+    if (task.priority !== undefined) taskData.priority = task.priority || 'medium';
 
     const { data, error } = await client
       .from('tasks')

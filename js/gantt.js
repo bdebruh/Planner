@@ -151,7 +151,7 @@ const Gantt = (() => {
               </div>
             </div>
             <!-- Detail panel — floating card -->
-            <div id="detailPanel" style="display:none;position:absolute;right:16px;top:12px;width:340px;max-height:calc(100% - 24px);background:#fff;border-radius:14px;border:1px solid rgba(15,45,107,.12);overflow-y:auto;box-shadow:0 8px 32px rgba(15,45,107,.18);z-index:40;"></div>
+            <div id="detailPanel" style="display:none;position:absolute;right:16px;top:12px;width:420px;max-height:calc(100% - 24px);background:#fff;border-radius:14px;border:1px solid rgba(15,45,107,.12);overflow-y:auto;box-shadow:0 8px 32px rgba(15,45,107,.18);z-index:40;"></div>
           </div>
         </div>
 
@@ -699,69 +699,174 @@ const Gantt = (() => {
       DB.getTaskAssignees(id).catch(() => []),
     ]);
 
-    panel.innerHTML = `
-      <div style="padding:16px 16px 12px;border-bottom:1px solid #f1f3f4;display:flex;align-items:center;justify-content:space-between;">
-        <span style="font-size:14px;font-weight:600;color:#0f2d6b;">${esc(task.name)}</span>
-        <button onclick="Gantt.closeDetail()" style="background:none;border:none;cursor:pointer;font-size:16px;color:#80868b;padding:4px 8px;border-radius:6px;">✕</button>
-      </div>
-      <div style="padding:16px;display:flex;flex-direction:column;gap:14px;">
-        <div class="form-group">
-          <label>Task Name</label>
-          <input class="input" id="det-name" value="${esc(task.name)}">
-        </div>
-        ${colorPickerHtml(id, task.color)}
-        ${!task.is_milestone?`<div class="form-group">
-          <label>Start Date</label>
-          <input type="date" class="input" id="det-start" value="${task.start_date}">
-        </div>`:''}
-        <div class="form-group">
-          <label>${task.is_milestone?'Date':'End Date'}</label>
-          <input type="date" class="input" id="det-end" value="${task.end_date}">
-        </div>
-        ${!task.is_milestone?`<div class="form-group">
-          <label>Progress — <b id="det-pct-lbl">${task.progress||0}%</b></label>
-          <input type="range" min="0" max="100" value="${task.progress||0}" id="det-prog" style="width:100%;accent-color:#1a73e8" oninput="document.getElementById('det-pct-lbl').textContent=this.value+'%'">
-        </div>`:''}
-        <div class="form-group">
-          <label>Dependencies <span style="font-size:11px;color:#80868b;">(tasks that must finish first)</span></label>
-          <div style="border:1.5px solid #dadce0;border-radius:8px;overflow:hidden;">
-            <input class="input" placeholder="Search tasks…" oninput="filterDeps(this.value)" style="border:none;border-bottom:1px solid #f1f3f4;border-radius:0;">
-            <div id="dep-list" style="max-height:150px;overflow-y:auto;">
-              ${others.map(o => `
-                <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;font-size:13px;${curDeps.includes(o.id)?'background:#e8f0fe':''}">
-                  <input type="checkbox" ${curDeps.includes(o.id)?'checked':''} value="${o.id}" onchange="Gantt.toggleDep('${id}','${o.id}',this.checked)" style="accent-color:#1a73e8">
-                  ${esc(o.name)}
-                </label>`).join('')}
-            </div>
-          </div>
-        </div>
-        ${members.length ? `
-        <div class="form-group">
-          <label>Assigned To</label>
-          <div style="display:flex;flex-direction:column;gap:6px;border:1.5px solid #dadce0;border-radius:8px;padding:8px;">
-            ${members.map(m => `
-              <label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;padding:3px 4px;border-radius:6px;${assignedIds.includes(m.id)?'background:#e8f0fe':''}">
-                <input type="checkbox" value="${m.id}" ${assignedIds.includes(m.id)?'checked':''}
-                  onchange="Gantt.toggleAssignee('${id}','${m.id}',this.checked)"
-                  style="accent-color:#1a5aa8;width:14px;height:14px;cursor:pointer;">
-                ${m.avatar_url ? `<img src="${m.avatar_url}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;">` : `<span style="width:22px;height:22px;border-radius:50%;background:#0f3460;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${(m.full_name||m.username||'?')[0].toUpperCase()}</span>`}
-                <span style="color:#0f2d6b;">${esc(m.full_name || m.username || 'Unknown')}</span>
-              </label>`).join('')}
-          </div>
-          ${members.length === 1 ? `<div style="font-size:11.5px;color:#80868b;margin-top:4px;">Share the project to add more team members.</div>` : ''}
-        </div>` : `
-        <div class="form-group">
-          <label>Assigned To</label>
-          <div style="font-size:13px;color:#80868b;padding:8px;border:1.5px solid #dadce0;border-radius:8px;">
-            No team members yet. Use the <strong>Share</strong> button on the project card to invite people.
-          </div>
-        </div>`}
-        <div class="form-group">
-          <label>Notes</label>
-          <textarea class="textarea" id="det-notes" rows="3">${esc(task.notes||'')}</textarea>
-        </div>
-        <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="Gantt.applyDetail('${id}')">Apply Changes</button>
-      </div>`;
+    // Build panel HTML without nested template literals
+    const p = document.createElement('div');
+
+    // Header
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'padding:16px 18px 14px;border-bottom:1px solid #f1f3f4;display:flex;align-items:center;justify-content:space-between;';
+    hdr.innerHTML = '<span style="font-size:15px;font-weight:700;color:#0f2d6b;">' + esc(task.name) + '</span>'
+      + '<button onclick="Gantt.closeDetail()" style="background:none;border:none;cursor:pointer;font-size:17px;color:#80868b;padding:4px 8px;border-radius:6px;line-height:1;">✕</button>';
+    p.appendChild(hdr);
+
+    // Body
+    const body = document.createElement('div');
+    body.style.cssText = 'padding:16px 18px;display:flex;flex-direction:column;gap:14px;';
+
+    // Name
+    body.innerHTML += detField('Task Name', '<input class="input" id="det-name" value="' + esc(task.name) + '">');
+
+    // Color
+    body.innerHTML += colorPickerHtml(id, task.color);
+
+    // Priority
+    const priorities = [{k:'low',l:'Low',c:'#6b7280'},{k:'medium',l:'Medium',c:'#f59e0b'},{k:'high',l:'High',c:'#ef4444'},{k:'critical',l:'Critical',c:'#7c3aed'}];
+    const curPri = task.priority || 'medium';
+    let priHtml = '<div class="form-group"><label style="font-size:12.5px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">Priority</label><div style="display:flex;gap:6px;">';
+    priorities.forEach(function(pr) {
+      const active = curPri === pr.k;
+      priHtml += '<button id="pri-' + pr.k + '" onclick="Gantt.setPriority(\'' + id + '\',\'' + pr.k + '\')" style="flex:1;padding:6px;border-radius:8px;border:2px solid '
+        + (active ? pr.c : '#dadce0') + ';background:' + (active ? pr.c+'18' : '#fff') + ';color:' + (active ? pr.c : '#80868b')
+        + ';cursor:pointer;font-size:12px;font-weight:' + (active?'700':'500') + ';font-family:inherit;transition:all .12s;">' + pr.l + '</button>';
+    });
+    priHtml += '</div></div>';
+    body.innerHTML += priHtml;
+
+    // Dates
+    if (!task.is_milestone) {
+      body.innerHTML += detField('Start Date', '<input type="date" class="input" id="det-start" value="' + task.start_date + '">');
+    }
+    body.innerHTML += detField(task.is_milestone ? 'Due Date' : 'End Date', '<input type="date" class="input" id="det-end" value="' + task.end_date + '">');
+
+    // Progress
+    if (!task.is_milestone) {
+      body.innerHTML += '<div class="form-group"><label style="font-size:12.5px;font-weight:500;color:#5f6368;">Progress — <b id="det-pct-lbl">' + (task.progress||0) + '%</b></label>'
+        + '<input type="range" min="0" max="100" value="' + (task.progress||0) + '" id="det-prog" style="width:100%;accent-color:#1a73e8" oninput="document.getElementById(\'det-pct-lbl\').textContent=this.value+\'%\'"></div>';
+    }
+
+    // Dependencies — search + chips
+    const depSection = document.createElement('div');
+    depSection.className = 'form-group';
+    depSection.innerHTML = '<label style="font-size:12.5px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">Dependencies <span style="font-weight:400;color:#80868b;">(must finish before this)</span></label>';
+    // Current dep chips
+    const depChips = document.createElement('div');
+    depChips.id = 'dep-chips';
+    depChips.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px;min-height:4px;';
+    curDeps.forEach(function(depId) {
+      const depTask = state.tasks.find(t => t.id === depId);
+      if (!depTask) return;
+      const chip = document.createElement('span');
+      chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:#e8f0fe;color:#1a5aa8;border-radius:999px;font-size:12px;font-weight:500;';
+      chip.innerHTML = esc(depTask.name) + '<button onclick="Gantt.toggleDep(\'' + id + '\',\'' + depId + '\',false);Gantt.openDetail(\'' + id + '\')" style="background:none;border:none;cursor:pointer;color:#1a5aa8;font-size:14px;line-height:1;padding:0 2px;">×</button>';
+      depChips.appendChild(chip);
+    });
+    depSection.appendChild(depChips);
+    // Search input
+    const depSearch = document.createElement('input');
+    depSearch.className = 'input';
+    depSearch.placeholder = 'Search tasks to add…';
+    depSearch.style.cssText = 'margin-bottom:4px;font-size:13px;';
+    const depDropdown = document.createElement('div');
+    depDropdown.id = 'dep-dropdown';
+    depDropdown.style.cssText = 'border:1.5px solid #dadce0;border-radius:8px;overflow:hidden;display:none;max-height:160px;overflow-y:auto;';
+    depSearch.addEventListener('input', function() {
+      const q = this.value.toLowerCase();
+      depDropdown.innerHTML = '';
+      if (!q) { depDropdown.style.display='none'; return; }
+      const matches = others.filter(o => o.name.toLowerCase().includes(q) && !curDeps.includes(o.id));
+      if (!matches.length) { depDropdown.style.display='none'; return; }
+      depDropdown.style.display = '';
+      matches.slice(0,8).forEach(function(o) {
+        const row = document.createElement('div');
+        row.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;color:#0f2d6b;';
+        row.textContent = o.name;
+        row.onmouseover = function() { this.style.background='#f0f4ff'; };
+        row.onmouseout  = function() { this.style.background=''; };
+        row.onclick = function() {
+          Gantt.toggleDep(id, o.id, true);
+          depSearch.value = '';
+          depDropdown.style.display = 'none';
+          Gantt.openDetail(id);
+        };
+        depDropdown.appendChild(row);
+      });
+    });
+    depSection.appendChild(depSearch);
+    depSection.appendChild(depDropdown);
+    body.appendChild(depSection);
+
+    // Assignees — search + chips
+    const asnSection = document.createElement('div');
+    asnSection.className = 'form-group';
+    asnSection.innerHTML = '<label style="font-size:12.5px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">Assigned To</label>';
+    // Current assignee chips
+    const asnChips = document.createElement('div');
+    asnChips.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px;min-height:4px;';
+    assignedIds.forEach(function(uid) {
+      const m = members.find(x => x.id === uid);
+      if (!m) return;
+      const chip = document.createElement('span');
+      chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:3px 10px 3px 6px;background:#e8f0fe;color:#1a5aa8;border-radius:999px;font-size:12px;font-weight:500;';
+      const avatar = m.avatar_url ? '<img src="'+m.avatar_url+'" style="width:18px;height:18px;border-radius:50%;object-fit:cover;">'
+        : '<span style="width:18px;height:18px;border-radius:50%;background:#0f3460;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;">'+(m.full_name||m.username||'?')[0].toUpperCase()+'</span>';
+      chip.innerHTML = avatar + esc(m.full_name || m.username || 'Unknown')
+        + '<button onclick="Gantt.toggleAssignee(\'' + id + '\',\'' + uid + '\',false)" style="background:none;border:none;cursor:pointer;color:#1a5aa8;font-size:14px;line-height:1;padding:0 2px;">×</button>';
+      asnChips.appendChild(chip);
+    });
+    asnSection.appendChild(asnChips);
+    // Search input
+    if (members.length) {
+      const asnSearch = document.createElement('input');
+      asnSearch.className = 'input';
+      asnSearch.placeholder = 'Search team members…';
+      asnSearch.style.cssText = 'margin-bottom:4px;font-size:13px;';
+      const asnDropdown = document.createElement('div');
+      asnDropdown.style.cssText = 'border:1.5px solid #dadce0;border-radius:8px;overflow:hidden;display:none;max-height:140px;overflow-y:auto;';
+      asnSearch.addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        asnDropdown.innerHTML = '';
+        const pool = members.filter(m => !assignedIds.includes(m.id) && (m.full_name||m.username||'').toLowerCase().includes(q));
+        if (!pool.length || !q) { asnDropdown.style.display='none'; return; }
+        asnDropdown.style.display = '';
+        pool.forEach(function(m) {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;font-size:13px;color:#0f2d6b;';
+          const av = m.avatar_url ? '<img src="'+m.avatar_url+'" style="width:22px;height:22px;border-radius:50%;object-fit:cover;">'
+            : '<span style="width:22px;height:22px;border-radius:50%;background:#0f3460;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;">'+(m.full_name||m.username||'?')[0].toUpperCase()+'</span>';
+          row.innerHTML = av + '<span>' + esc(m.full_name || m.username || 'Unknown') + '</span>';
+          row.onmouseover = function() { this.style.background='#f0f4ff'; };
+          row.onmouseout  = function() { this.style.background=''; };
+          row.onclick = function() {
+            Gantt.toggleAssignee(id, m.id, true);
+            asnSearch.value = '';
+            asnDropdown.style.display = 'none';
+            Gantt.openDetail(id);
+          };
+          asnDropdown.appendChild(row);
+        });
+      });
+      asnSection.appendChild(asnSearch);
+      asnSection.appendChild(asnDropdown);
+    } else {
+      asnSection.innerHTML += '<div style="font-size:13px;color:#80868b;padding:8px;border:1.5px solid #dadce0;border-radius:8px;">Share the project to add team members.</div>';
+    }
+    body.appendChild(asnSection);
+
+    // Notes
+    body.innerHTML += '<div class="form-group"><label style="font-size:12.5px;font-weight:500;color:#5f6368;display:block;margin-bottom:5px;">Notes</label>'
+      + '<textarea class="textarea" id="det-notes" rows="3">' + esc(task.notes||'') + '</textarea></div>';
+
+    // Apply button
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'btn btn-primary';
+    applyBtn.style.cssText = 'width:100%;justify-content:center;';
+    applyBtn.textContent = 'Apply Changes';
+    applyBtn.onclick = function() { Gantt.applyDetail(id); };
+    body.appendChild(applyBtn);
+
+    p.appendChild(body);
+    panel.innerHTML = '';
+    panel.appendChild(p);
   }
 
   function closeDetail() {
@@ -775,6 +880,28 @@ const Gantt = (() => {
     else if (state.selectedId) openDetail(state.selectedId);
   }
 
+  function detField(label, input) {
+    return '<div class="form-group"><label style="font-size:12.5px;font-weight:500;color:#5f6368;display:block;margin-bottom:5px;">' + label + '</label>' + input + '</div>';
+  }
+
+  function setPriority(taskId, priority) {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    task.priority = priority;
+    const colors = {low:'#6b7280',medium:'#f59e0b',high:'#ef4444',critical:'#7c3aed'};
+    ['low','medium','high','critical'].forEach(function(k) {
+      const btn = document.getElementById('pri-' + k);
+      if (!btn) return;
+      const active = k === priority;
+      const c = colors[k];
+      btn.style.borderColor = active ? c : '#dadce0';
+      btn.style.background  = active ? c+'18' : '#fff';
+      btn.style.color       = active ? c : '#80868b';
+      btn.style.fontWeight  = active ? '700' : '500';
+    });
+    markDirty();
+  }
+
   function applyDetail(id) {
     const task = state.tasks.find(t=>t.id===id);
     if (!task) return;
@@ -782,7 +909,7 @@ const Gantt = (() => {
     task.end_date = document.getElementById('det-end')?.value || task.end_date;
     task.notes    = document.getElementById('det-notes')?.value || '';
     if (task.is_milestone) {
-      task.start_date = task.end_date; // milestone = single date
+      task.start_date = task.end_date;
     } else {
       task.start_date = document.getElementById('det-start')?.value || task.start_date;
       task.progress   = parseInt(document.getElementById('det-prog')?.value || 0);
@@ -1061,7 +1188,7 @@ const Gantt = (() => {
   return {
     render, save, addTask, deleteSelected, indent, outdent,
     setZoom, scrollToday, openDetail, closeDetail, toggleDetail,
-    applyDetail, toggleDep, toggleDone, toggleAssignee, showCtx, hideCtx, markDirty, renderGantt,
+    applyDetail, toggleDep, toggleDone, toggleAssignee, setPriority, showCtx, hideCtx, markDirty, renderGantt,
     showPhasesModal, savePopDates, savePhasesFromModal, addPhaseRow, deletePhaseRow,
     updatePhaseField, setTaskColor,
     // expose internal state for ctx menu inline onclick
