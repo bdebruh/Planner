@@ -55,7 +55,7 @@ const Dashboard = (() => {
       html += summaryCard('Tasks Overdue', overdue.length,           'Need attention',  overdue.length>0?'#ef4444':'#1e8e3e');
       html += summaryCard('Due This Week', dueWeek.length,           'Upcoming',        dueWeek.length>0?'#f59e0b':'#1e8e3e');
       html += summaryCard('Overall Progress', totalProgress+'%',     'Across all tasks','#0f2d6b');
-      html += summaryCard('Papers',        papers.length,            papers.filter(p=>p.status==='under_review').length+' under review', '#9334e6');
+      html += summaryCard('Papers',        papers.length,            papers.filter(p=>p.work_status==='Active').length+' active', '#9334e6');
       html += summaryCard('Total Budget',  fmt(totalBudget),         allGrants.length+' grant'+(allGrants.length!==1?'s':''), '#1e8e3e');
       html += '</div>';
 
@@ -103,17 +103,24 @@ const Dashboard = (() => {
 
       // Papers snapshot
       if (papers.length > 0) {
-        const statusColors = {draft:'#80868b',submitted:'#1a5aa8',under_review:'#f59e0b',revise_resubmit:'#e37400',accepted:'#1e8e3e',published:'#1e8e3e',rejected:'#b91c1c'};
-        const statusLabels = {draft:'Draft',submitted:'Submitted',under_review:'Under Review',revise_resubmit:'Revise & Resubmit',accepted:'Accepted',published:'Published',rejected:'Rejected'};
+        const wsC = {Active:'#1e8e3e',Paused:'#f59e0b',Ideation:'#9334e6',Incomplete:'#6b7280'};
         html += card('📄 Papers', '<div style="padding:8px 0;">'
           + papers.slice(0,5).map(p =>
               '<div style="display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid #f9f9f9;">'
-              + '<span style="font-size:11px;padding:2px 9px;border-radius:999px;background:'+(statusColors[p.status]||'#80868b')+'20;color:'+(statusColors[p.status]||'#80868b')+';font-weight:600;white-space:nowrap;">'+(statusLabels[p.status]||p.status)+'</span>'
+              + '<span style="font-size:11px;padding:2px 9px;border-radius:999px;background:'+(wsC[p.work_status]||'#80868b')+'20;color:'+(wsC[p.work_status]||'#80868b')+';font-weight:600;white-space:nowrap;">'+(p.work_status||'Active')+'</span>'
               + '<span style="font-size:13px;color:#0f2d6b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">'+esc(p.title)+'</span>'
-              + (p.journal?'<span style="font-size:11.5px;color:#80868b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;">'+esc(p.journal)+'</span>':'')
+              + (p.pubs_target?'<span style="font-size:11.5px;color:#80868b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;">'+esc(p.pubs_target)+'</span>':'')
               + '</div>'
             ).join('')
-          + '</div><div style="padding:10px 18px;"><button onclick="showView(\'papers\')" style="font-size:12.5px;color:#1a5aa8;background:none;border:none;cursor:pointer;">View all papers →</button></div>'
+          + '</div>'
+          + '<div style="display:flex;gap:6px;padding:8px 18px;flex-wrap:wrap;">'
+          + [{k:'Accepted',c:'#1e8e3e'},{k:'Pending',c:'#1a5aa8'},{k:'Rejected',c:'#b91c1c'},{k:'Other',c:'#80868b'}].map(function(s){
+              const cnt=papers.filter(function(p){return p.pubs_status===s.k;}).length;
+              if(!cnt) return '';
+              return '<span style="font-size:11.5px;padding:2px 10px;border-radius:999px;background:'+s.c+'18;color:'+s.c+';font-weight:600;">'+s.k+' '+cnt+'</span>';
+            }).join('')
+          + '</div>'
+          + '<div style="padding:6px 18px 12px;"><button onclick="showView(\'papers\')" style="font-size:12.5px;color:#1a5aa8;background:none;border:none;cursor:pointer;">View all papers →</button></div>'
         );
       }
 
