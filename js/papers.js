@@ -4,7 +4,7 @@ const Papers = (() => {
   let _papers    = [];
   let _projects  = [];
   let _budgets   = [];
-  let _search    = '';
+  let _query     = '';
   let _dragId    = null;
 
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -50,12 +50,12 @@ const Papers = (() => {
 
   // ── Main list view ────────────────────────────────────────────
   function renderList() {
-    const filtered = _search
+    const filtered = _query
       ? _papers.filter(p =>
-          (p.title||'').toLowerCase().includes(_search) ||
-          (p.pi||'').toLowerCase().includes(_search) ||
-          (p.topics||'').toLowerCase().includes(_search) ||
-          (p.pubs_target||'').toLowerCase().includes(_search))
+          (p.title||'').toLowerCase().includes(_query) ||
+          (p.pi||'').toLowerCase().includes(_query) ||
+          (p.topics||'').toLowerCase().includes(_query) ||
+          (p.pubs_target||'').toLowerCase().includes(_query))
       : _papers;
 
     let html = '<div style="max-width:1100px;margin:0 auto;padding:24px 24px;">';
@@ -233,7 +233,7 @@ const Papers = (() => {
 
   // ── Search ────────────────────────────────────────────────────
   function _search(val) {
-    _search = val.toLowerCase();
+    _query = val.toLowerCase();
     renderList();
     // Restore focus + cursor
     const el = document.getElementById('paper-search');
