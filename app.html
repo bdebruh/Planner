@@ -16,8 +16,11 @@
     </a>
     <div class="nav-spacer"></div>
     <div class="nav-tabs">
-      <button class="nav-tab active" onclick="showView('projects')" id="tab-projects">Projects</button>
+      <button class="nav-tab active" onclick="showView('dashboard')" id="tab-dashboard">Dashboard</button>
+      <button class="nav-tab" onclick="showView('projects')" id="tab-projects">Projects</button>
+      <button class="nav-tab" onclick="showView('gantt')" id="tab-gantt" style="display:none">Gantt</button>
       <button class="nav-tab" onclick="showView('budget')" id="tab-budget">Budget</button>
+      <button class="nav-tab" onclick="showView('papers')" id="tab-papers">Papers</button>
     </div>
     <div class="nav-spacer"></div>
     <div class="nav-user">
@@ -38,6 +41,8 @@
   <script src="js/gantt.js"></script>
   <script src="js/budget.js"></script>
   <script src="js/projects.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/papers.js"></script>
   <script>
     let currentUser    = null;
     let currentProjectId = null;
@@ -88,20 +93,21 @@
         avatar.textContent = name[0].toUpperCase();
       }
 
-      showView('projects');
+      showView('dashboard');
     }
 
     function showView(view, projectId) {
       currentView = view;
       if (projectId) currentProjectId = projectId;
 
-      // Update nav tabs
-      ['projects','budget'].forEach(t => {
+      ['dashboard','projects','budget','papers'].forEach(t => {
         const el = document.getElementById('tab-' + t);
         if (el) el.classList.toggle('active', t === view);
       });
 
-      // Gantt needs a fixed height so its internal scroll works
+      const ganttTab = document.getElementById('tab-gantt');
+      if (ganttTab) ganttTab.style.display = (view === 'gantt' ? '' : 'none');
+
       const content = document.getElementById('mainContent');
       if (view === 'gantt') {
         content.style.height   = 'calc(100vh - 56px)';
@@ -111,13 +117,16 @@
         content.style.overflow = '';
       }
 
-      if (view === 'projects')     Projects.render(content);
-      else if (view === 'gantt')   Gantt.render(content, currentProjectId);
-      else if (view === 'budget')  Budget.render(content);
+      if      (view === 'dashboard') Dashboard.render(content);
+      else if (view === 'projects')  Projects.render(content);
+      else if (view === 'gantt')     Gantt.render(content, currentProjectId);
+      else if (view === 'budget')    Budget.render(content);
+      else if (view === 'papers')    Papers.render(content);
     }
 
     function openProject(id) {
       currentProjectId = id;
+      document.getElementById('tab-gantt').style.display = '';
       showView('gantt', id);
     }
 
