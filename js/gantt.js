@@ -618,15 +618,26 @@ const Gantt = (() => {
     if (container) renderGantt(container);
   }
 
-  function deleteSelected() {
+  async function deleteSelected() {
     if (!state.selectedId) return;
     const toRemove = new Set([state.selectedId, ...descendants(state.selectedId)]);
+
+    // Delete from DB first
+    for (const id of toRemove) {
+      try { await DB.deleteTask(id); } catch(e) { console.error('Delete task failed:', e); }
+    }
+
+    // Then remove from local state
     state.tasks = state.tasks.filter(t => !toRemove.has(t.id));
-    state.tasks.forEach(t => t.dependencies = (t.dependencies||[]).filter(d=>!toRemove.has(d)));
+    state.tasks.forEach(t => t.dependencies = (t.dependencies||[]).filter(d => !toRemove.has(d)));
     state.selectedId = null;
-    markDirty();
+
+    const ind = document.getElementById('btn-save');
+    if (ind) { ind.textContent = 'Saved ✓'; ind.style.color = '#1e8e3e'; }
+
     const container = document.getElementById('gp')?.parentElement;
     if (container) renderGantt(container);
+    toast('Task deleted.', '');
   }
 
   function indent() {
